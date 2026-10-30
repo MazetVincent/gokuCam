@@ -45,8 +45,8 @@ Everything runs locally. No image is recorded or sent anywhere except to the cal
 
 2. **Get the code** and launch it:
    ```bash
-   git clone https://github.com/<you>/gokucam.git
-   cd gokucam
+   git clone https://github.com/MazetVincent/gokuCam.git
+   cd gokuCam
    ./run.command
    ```
    The first launch creates a virtual environment in `.venv/`, installs the dependencies and downloads the models into `models/` (about 8 MB). On macOS you can also double-click `run.command` in Finder.

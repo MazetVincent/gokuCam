@@ -45,8 +45,8 @@ Tout tourne en local. Aucune image n'est enregistrée ni envoyée ailleurs qu'à
 
 2. **Récupérez le code** et lancez-le :
    ```bash
-   git clone https://github.com/<vous>/gokucam.git
-   cd gokucam
+   git clone https://github.com/MazetVincent/gokuCam.git
+   cd gokuCam
    ./run.command
    ```
    Le premier lancement crée un environnement virtuel dans `.venv/`, installe les dépendances et télécharge les modèles dans `models/` (environ 8 Mo). Sur macOS, vous pouvez aussi double-cliquer sur `run.command` dans le Finder.
