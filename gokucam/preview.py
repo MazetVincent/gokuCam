@@ -21,7 +21,8 @@ def put_text(img: np.ndarray, text: str, org: tuple[int, int], scale: float = 0.
 
 
 def key_help(app: GokuCam) -> str:
-    signs = "  ".join(f"{jutsu.key.upper()}: {jutsu.short}" for jutsu in app.jutsus.values())
+    items = (*app.jutsus.values(), *app.overlays.values())
+    signs = "  ".join(f"{item.key.upper()}: {item.short}" for item in items)
     return f"{signs}  B: retake photo  D: debug  S: snapshot  Q: quit"
 
 

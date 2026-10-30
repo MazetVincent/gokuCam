@@ -25,13 +25,14 @@ This document follows one webcam frame through the program, then describes each 
 
 ## 2. Detection
 
-`models.Detectors` wraps three official MediaPipe models. They are downloaded once into `models/`:
+`models.Detectors` wraps four official MediaPipe models. They are downloaded once into `models/`:
 
 | Model | Output | Used for |
 |---|---|---|
 | `selfie_segmenter_landscape` | person probability per pixel | the person mask: where the effects apply |
 | `hand_landmarker` | 21 points per hand, up to 2 hands | signs |
 | `blaze_face_short_range` | face box and 6 keypoints | locating the forehead |
+| `efficientdet_lite0` | object boxes (the 80 COCO categories; only "cup" is kept) | spotting a mug for "This is fine" |
 
 They run in **video mode** on a **640×360** copy of the frame: tracking makes landmarks stable and cheap from one frame to the next, and the small size keeps detection at about 20 ms per frame on an M1.
 
@@ -39,7 +40,9 @@ They run in **video mode** on a **640×360** copy of the frame: tracking makes l
 
 **Forehead** (`hands.face_from_detection`): BlazeFace gives the eyes and mouth. The forehead is extrapolated above the eyes along the mouth→eyes axis, at 0.8 eye distances, so it follows head tilt. Hands often hide the face, so the last face seen is kept for one second.
 
-**Still-image hand detection**: video tracking has a blind spot. When the hands are clasped with interlocked fingers (the Substitution sign), it tracks **a single merged hand** and never looks for a second one, whatever the confidence threshold. A second hand landmarker in **image mode** (no tracking, confidence 0.3) does find both hands on the same frame. It is only run on demand (see [3.3](#33-a-two-hand-sign-substitution)), because it costs about 10 ms.
+**Still-image hand detection**: video tracking has a blind spot. When the hands are clasped with interlocked fingers (the Substitution sign), it tracks **a single merged hand** and never looks for a second one, whatever the confidence threshold. A second hand landmarker in **image mode** (no tracking, confidence 0.3) does find both hands on the same frame. It is only run on demand (see [3.3](#33-a-two-hand-sign-substitution)) and at most every third frame, because it costs about 35 ms.
+
+**Object detection** costs as much as all the other models together (about 18 ms), so it runs on a **background thread**, on another CPU core, and only while a hand is in view (no hand, no mug being held). The main loop never waits for it: it uses the latest result, a few frames old at most, which is plenty for a mug.
 
 ## 3. Recognising signs
 
@@ -107,6 +110,7 @@ hidden  ──sign──> appearing ──(effect done)──> visible
 - During an effect, `jutsu.render(scene, t, arriving)` is called with `t = elapsed / duration`.
 - At the end of a departure, `jutsu.hidden_image(scene)` becomes the frozen image, and `jutsu.leftover_box()` records what it left behind (the log). The next arrival receives it in `scene.leftover`, so Substitution's smoke can also cover a log left by an earlier departure.
 - You can leave with one jutsu and come back with another: each arrival starts from `scene.hidden`, whatever produced it.
+- **Overlays** have their own small life cycle, independent of the one above: an overlay starts when its sign has been held for 0.35 s, stays active while the sign is seen (plus `linger_seconds`, 1.5 s for the mug, so hiding it for an instant does not stop the fire), and its `level` fades from 0 to 1 and back. It is drawn on top of whatever the call gets, after the jutsu. Its key switches it on regardless of the sign.
 
 A `Scene` carries everything an effect needs: the live frame, the room photo, the current hidden image, the full-resolution person mask (and its bounding box), the seed, the per-frame random generator and the leftover box.
 
@@ -161,6 +165,28 @@ Imitates a heavily compressed video, as in the "bye" meme:
 - Each block dies at its own moment; blocks near the top (the head) survive longer. The survivors smear sideways row by row (`np.roll` per block row), and flicker.
 - For this meme, playing the departure backwards is what looks right, so the arrival is a rewind with the live person.
 
+### 6.4 Into the bush (`jutsus/into_the_bush.py`)
+
+Homer Simpson backing into the hedge. The sign is one finger raised **above the forehead**: a finger at the mouth would be a "shush", and video tracking sees the Substitution's clasped hands as a single raised index, but in front of the chin.
+
+- **Hedge**: the flat cartoon green measured on the reference clip (BGR 32, 139, 58), a few slightly darker patches and small dark leaf strokes, generated once per departure. It covers the whole width, from above the person's head down to the bottom, with a top edge made of round bumps and a jagged leafy outline (high-frequency noise added to every edge), drawn in dark green.
+- **Growth** (t 0 → 0.35): the hedge rises from the bottom of the frame, behind the person.
+- **Closing in** (t 0.35 → 1): each pixel of the body gets a score: its distance to the outline of the body (distance transform), plus a bonus around where the eyes usually are, plus leafy noise. The hedge covers the pixels **by rank** of that score, so the visible area shrinks steadily from the outline inwards. The thickest parts (chest, then face) remain as islands, and the face peeks out last, as in the cartoon.
+- The app's person mask is padded for the other effects; here it is tightened back to the real outline, so that the hedge hugs the body without a halo.
+- **Arrival**: the departure played backwards, from the hedge the call is seeing. After another jutsu's departure (for example a log), the hedge first fades in over that image.
+
+### 6.5 This is fine (`overlays/this_is_fine.py`)
+
+An overlay rather than a jutsu: you do not vanish, the room catches fire around you while you hold your mug.
+
+- **Sign** (`mug_checks`): a "cup" box from the object detector, with at least 3 hand landmarks on it or within 35 % of its size around it. A mug left on the desk is not enough.
+- **Flames**: 9 spots spread across the width, appearing one after the other in random order over 2.4 s, each growing in 0.5 s. A spot is a cluster of 3 to 5 **tongues**: polygons wide at the base and pointed at the tip, whose width, sway and height wobble with sines, more and more towards the tip. Every tongue is drawn three times, as in the cartoon: an orange rim, a yellow body and a pale core. Spots behind the person are taller, so they rise above the shoulders.
+- **Always behind you**: the flame layer is multiplied by `1 − person mask` before compositing, so you sit in front of the fire like the dog in the meme.
+- **Warm light**: the whole image, you included, is tinted towards orange with a slight flicker.
+- **Smoke ceiling**: a dark band at the top with three rows of irregular puffs along its lower edge (lighter and outlined in front, as in the cartoon) that drift slowly in alternating directions and bob up and down. Only the top 20 % of the frame is processed.
+- **Caption**: "This is fine." is typed at 0.08 s per letter after 1.4 s, white with a black outline, rendered with Pillow and a bold system font (OpenCV's own font is the fallback). Each prefix is laid out as the full caption would be, so the text does not shift while it is being typed, and rendered sprites are cached.
+- **Cost**: about 7 ms per frame, thanks to integer blending (`cv2.blendLinear`, `cv2.transform`) instead of float arithmetic on the whole frame.
+
 ## 7. Webcam and virtual camera
 
 **Picking the real webcam** (`camera.py`): once OBS is installed, macOS has two cameras, and OpenCV gave index 0 to *OBS Virtual Camera*. GokuCam was reading its own output. Two safeguards:
@@ -175,17 +201,20 @@ Measured on an Apple M1 at 1280×720:
 
 | Step | Time per frame |
 |---|---|
-| Detection + state machine (visible or hidden) | ~20 ms |
+| Detection + state machine (hand tracking costs about as much as searching for hands) | ~30 ms |
+| Still-image hand detection (only while a raised index is seen, every third frame) | ~35 ms, so ~12 ms per frame |
+| Object detection (background thread, only while a hand is in view) | ~18 ms, off the main loop |
 | Instant Transmission effect | ~20 ms |
 | Substitution effect | ~28 ms |
 | Peace out effect | ~13 ms |
-| Still-image hand detection (only while a raised index is seen) | ~10 ms |
+| Into the bush effect | ~7 ms |
+| This is fine overlay | ~7 ms |
 | Log generation (once per Substitution) | ~90 ms |
 
-The main tricks: detection at 640×360, smoke at 1/4 resolution, blurs at reduced resolution, and per-effect work (log, seed, noise) done once in `start()` rather than every frame.
+Most of the time goes into MediaPipe itself; in particular, the hand landmarker looks for palms on every frame while no hand is tracked. The tricks on GokuCam's side: detection at 640×360, smoke at 1/4 resolution, blurs at reduced resolution, integer blending, slow detectors throttled or moved to a background thread, and per-effect work (log, seed, noise) done once in `start()` rather than every frame.
 
 ## 9. Privacy
 
 - Frames are processed in memory and sent only to the virtual camera.
 - Nothing is written to disk, except when you press `S`: that saves a diagnostic snapshot into `captures/`, which `.gitignore` excludes. Delete it whenever you like.
-- The only network access is the download of the three MediaPipe models from `storage.googleapis.com` on first run.
+- The only network access is the download of the four MediaPipe models from `storage.googleapis.com` on first run.

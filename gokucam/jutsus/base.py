@@ -22,6 +22,7 @@ from typing import Callable
 import numpy as np
 
 from ..hands import Face
+from ..models import DetectedObject
 
 Box = tuple[float, float, float, float]  # x0, y0, x1, y1 in pixels
 
@@ -32,6 +33,7 @@ class SignInput:
     hands: list[np.ndarray]                # landmarks of each tracked hand, (21, 2)
     face: Face | None                      # None when no face was seen recently
     detect_still: Callable[[], list[np.ndarray]] = field(default=lambda: [], repr=False)
+    objects: list[DetectedObject] = field(default_factory=list)  # e.g. a cup (see models.OBJECT_LABELS)
 
     @cached_property
     def still_hands(self) -> list[np.ndarray]:

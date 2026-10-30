@@ -11,10 +11,17 @@ GokuCam sits between your real webcam and your video-call app. It watches your h
 | **Instant Transmission** (Goku): index and middle finger together on your forehead | Blue energy lines appear around you, strips of your body tear vertically, then your whole body gathers into a thin column and disappears |
 | **Substitution** (Naruto): hands clasped with fingers interlocked, both index fingers up and touching, in front of your chin | You vanish in a cloud of smoke; when it clears, a tree log stands where you were sitting |
 | **Peace out**: a V sign, away from your face | You turn into a translucent ghost of compression blocks, a few blocks smear sideways, and you are gone (the "bye" meme) |
+| **Into the bush** (Homer Simpson): one finger raised above your head | A cartoon hedge grows around and above you, then closes in on you, your face last; the return plays it backwards |
 
 Make any sign again to come back; the return plays that sign's arrival effect.
 
-Everything runs locally. No image is recorded or sent anywhere except to the call itself. The only network access is the first-run download of three official MediaPipe models from Google.
+And one effect that does not make you vanish, an **overlay** that lasts as long as its sign:
+
+| Sign | Effect |
+|---|---|
+| **This is fine**: hold your mug | Cartoon flames appear one after the other at different places around you (always behind you), a ceiling of smoke rolls in at the top of the screen, and "This is fine." is typed letter by letter |
+
+Everything runs locally. No image is recorded or sent anywhere except to the call itself. The only network access is the first-run download of four official MediaPipe models from Google.
 
 ## Contents
 
@@ -49,7 +56,7 @@ Everything runs locally. No image is recorded or sent anywhere except to the cal
    cd gokuCam
    ./run.command
    ```
-   The first launch creates a virtual environment in `.venv/`, installs the dependencies and downloads the models into `models/` (about 8 MB). On macOS you can also double-click `run.command` in Finder.
+   The first launch creates a virtual environment in `.venv/`, installs the dependencies and downloads the models into `models/` (about 13 MB). On macOS you can also double-click `run.command` in Finder.
 
 3. **Allow camera access** when macOS asks. The permission goes to the app that launches GokuCam: Terminal, iTerm, your IDE…
 
@@ -60,13 +67,14 @@ Everything runs locally. No image is recorded or sent anywhere except to the cal
    - **Teams**: *Settings > Devices > Camera*
    - **Slack** (huddles): the arrow next to the camera button, or *Preferences > Audio & video*
    - Quit and reopen the app (Cmd+Q) if the camera does not appear.
-3. **Hold a sign for about 0.3 s** to vanish, and again to come back.
+3. **Hold a sign for about 0.3 s** to vanish, and again to come back. Pick up your mug for "This is fine"; put it down and the fire dies out.
 
 Keep the preview window open during the call: closing it stops the virtual camera. Hints and debug info only appear in the preview; the call always gets a clean image.
 
 | Key (in the preview) | Action |
 |---|---|
-| `T` / `N` / `P` | Play Instant Transmission / Substitution / Peace out without the sign |
+| `T` / `N` / `P` / `H` | Play Instant Transmission / Substitution / Peace out / Into the bush without the sign |
+| `F` | Switch "This is fine" on or off without the mug |
 | `B` | Retake the room photo |
 | `D` | Debug: for each sign, show which criteria are missing |
 | `S` | Save a diagnostic snapshot (camera, output, room photo, mask) to `captures/` |
@@ -94,14 +102,16 @@ Command-line options (`./run.command --help`):
 ```
 webcam ──> detection (640×360) ──> signs ──> state machine ──> effect ──> virtual camera ──> Teams / Slack
             · person mask                     plate → visible → vanishing → hidden → appearing → visible
-            · hand landmarks
+            · hand landmarks                                                     + overlays on top
             · face
+            · objects (mug)
 ```
 
-- **Detection**: three MediaPipe models run on a downscaled copy of every frame: a selfie segmenter (person mask), a hand landmarker (21 points per hand) and a face detector (to locate the forehead).
+- **Detection**: MediaPipe models run on a downscaled copy of every frame: a selfie segmenter (person mask), a hand landmarker (21 points per hand), a face detector (to locate the forehead) and, while a hand is in view, an object detector (to spot a mug) on a background thread.
 - **Signs**: each sign is a set of named geometric criteria on the landmarks, for example "index extended" or "fingers together". Thresholds are relative to the size of the hand, so signs work near and far from the camera. A sign must be held for 0.35 s and fires once, until it is released.
 - **Invisibility**: rather than erasing you from the live image, which leaves shadows, halos and exposure flicker, GokuCam sends the call a **photo of the empty room** taken at startup, with a little animated sensor grain. Live video only comes back with the next sign.
-- **Effects**: each effect is a function of `t` from 0 to 1 that composites the live frame, the person mask and the room photo with OpenCV and NumPy. They run in real time: 13 to 28 ms per frame on an M1.
+- **Effects**: each effect is a function of `t` from 0 to 1 that composites the live frame, the person mask and the room photo with OpenCV and NumPy. They run in real time: 7 to 28 ms per frame on an M1, on top of about 30 ms of detection.
+- **Overlays** live outside the vanish / come-back cycle: they fade in when their sign is held, stay while it lasts (and a moment more, so that hiding the mug for an instant does not stop the fire), and are drawn on top of whatever the call gets.
 
 The full story, including the design decisions and what did not work, is in **[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)**.
 
@@ -121,7 +131,12 @@ gokucam/
     instant_transmission.py
     substitution.py
     peace_out.py
+    into_the_bush.py
     __init__.py     registry of jutsus
+  overlays/
+    base.py         the Overlay contract: checks() + render(level)
+    this_is_fine.py
+    __init__.py     registry of overlays
 tests/              unit tests (no webcam or MediaPipe needed)
 tools/              inspect_sign.py: what the detectors see of a sign on a photo
 docs/               how it works, adding a sign (English and French)
@@ -146,16 +161,16 @@ class Wave(Jutsu):
         ...
 ```
 
-Add it to `default_jutsus()` in `gokucam/jutsus/__init__.py`, and the app does the rest: hold detection, keyboard shortcut, debug overlay, frozen image, self-test. The step-by-step guide, with the landmark map, the geometry helpers, how to tune thresholds on your own hands and how to test, is in **[docs/ADDING_A_SIGN.md](docs/ADDING_A_SIGN.md)**.
+Add it to `default_jutsus()` in `gokucam/jutsus/__init__.py`, and the app does the rest: hold detection, keyboard shortcut, debug overlay, frozen image, self-test. An overlay works the same way (`gokucam/overlays/`), with a `render()` that draws on top of the image at a given fade level. The step-by-step guide, with the landmark map, the geometry helpers, objects such as the mug, how to tune thresholds on your own hands and how to test, is in **[docs/ADDING_A_SIGN.md](docs/ADDING_A_SIGN.md)**.
 
 ## Tests
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -t .   # 42 tests, a few seconds, no webcam needed
+.venv/bin/python -m unittest discover -s tests -t .   # 60 tests, a few seconds, no webcam needed
 ./run.command --self-test                             # full pipeline with the real models
 ```
 
-The tests cover the signs (including landmarks recorded from a real photo of the Substitution sign), every effect's start and end frames and key phases, the state machine with a fake jutsu, the room photo and the camera selection.
+The tests cover the signs (including landmarks recorded from a real photo of the Substitution sign), every effect's start and end frames and key phases, the overlay (flames behind you, typed caption, fade in and out), the state machine with a fake jutsu and a fake overlay, the room photo and the camera selection.
 
 ## Troubleshooting
 
@@ -167,14 +182,15 @@ The tests cover the signs (including landmarks recorded from a real photo of the
 | A brief magenta flash in the call at startup | Normal: GokuCam checks that it is not reading its own output |
 | A sign does not trigger | Press `D` and read which criterion is missing; see [docs/ADDING_A_SIGN.md](docs/ADDING_A_SIGN.md#3-tuning-thresholds-on-your-hands) |
 | You can see yourself in the room photo | Press `B` and step fully out of the frame during the countdown |
+| "This is fine" does not start | Press `D`: "mug in view" means the detector does not recognise your mug (try another angle, keep it in the light); "hand on the mug" means your hand is not seen on it |
 
 ## Credits
 
-- [MediaPipe](https://ai.google.dev/edge/mediapipe) (Google) for segmentation, hand landmarks and face detection
-- [OpenCV](https://opencv.org/) and [NumPy](https://numpy.org/) for all the image processing
+- [MediaPipe](https://ai.google.dev/edge/mediapipe) (Google) for segmentation, hand landmarks, face and object detection
+- [OpenCV](https://opencv.org/) and [NumPy](https://numpy.org/) for all the image processing, [Pillow](https://python-pillow.org/) for the caption text
 - [pyvirtualcam](https://github.com/letmaik/pyvirtualcam) and [OBS Studio](https://obsproject.com/) for the virtual camera
 
-The effects are inspired by *Dragon Ball Z*, *Naruto* and an internet meme. This is a fan project, not affiliated with their authors or publishers; no image from those works is included: everything is drawn in code.
+The effects are inspired by *Dragon Ball Z*, *Naruto*, *The Simpsons*, the "bye" meme and K.C. Green's "This is fine" comic. This is a fan project, not affiliated with their authors or publishers; no image from those works is included: everything is drawn in code.
 
 ## License
 

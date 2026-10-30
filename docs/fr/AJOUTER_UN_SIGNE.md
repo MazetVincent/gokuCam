@@ -11,6 +11,7 @@ Dans GokuCam, un signe et l'effet qu'il déclenche forment un **jutsu**. En ajou
 - [5. Enregistrer le jutsu](#5-enregistrer-le-jutsu)
 - [6. Tester](#6-tester)
 - [7. Exemple complet](#7-exemple-complet)
+- [8. Un overlay plutôt qu'un effet de disparition](#8-un-overlay-plutôt-quun-effet-de-disparition)
 - [Liste de vérification](#liste-de-vérification)
 
 ## 1. Le contrat
@@ -46,6 +47,7 @@ class SignInput:
     hands: list[np.ndarray]       # repères (21, 2) de chaque main suivie, en pixels de l'image de détection 640×360
     face: Face | None             # face.forehead (x, y) et face.width ; None si aucun visage vu récemment
     still_hands: list[np.ndarray] # (paresseux) mains redétectées sur l'image fixe, voir plus bas
+    objects: list[DetectedObject] # .label, .score, .box (x0, y0, x1, y1) : objets visibles, voir plus bas
 ```
 
 L'axe y va **vers le bas** : « au-dessus » veut dire un y plus petit.
@@ -82,6 +84,7 @@ Les constantes (`WRIST`, `INDEX_TIP`, `MIDDLE_MCP`…) sont dans `gokucam/hands.
 - **Mains jointes ou superposées** : le suivi vidéo peut les fusionner en une seule main. Demandez `signs.still_hands` (une détection sur l'image fixe, sans suivi), mais **seulement quand la pose de la main fusionnée est vue** : cela coûte environ 10 ms par image.
 - **Ne marchez pas sur les signes existants** : ajoutez un critère d'exclusion. Peace out a « away from the forehead » pour ne pas se déclencher quand vous faites la Transmission instantanée ; la Substitution a « below the eyes ».
 - **Évitez les gestes du quotidien** : un signe que l'on fait sans y penser (se toucher le visage, un pouce levé en réunion) vous fera disparaître par accident. La Substitution exige deux mains précisément pour qu'un geste « chut » ne suffise pas.
+- **Objets** : `signs.objects` liste ce que voit le détecteur d'objets, seulement quand une main est visible. Il ne cherche que les catégories COCO listées dans `models.OBJECT_LABELS` (juste `"cup"` aujourd'hui) ; ajoutez celles dont votre signe a besoin (`"bottle"`, `"cell phone"`, `"book"`…). `mug_checks()` dans `overlays/this_is_fine.py` montre comment vérifier qu'une main tient l'objet.
 - Le visage peut être `None` (les mains le cachent souvent). Décidez ce que cela signifie pour votre signe : la Transmission instantanée exige un visage ; la Substitution et Peace out traitent « pas de visage » comme « loin du visage ».
 
 ## 3. Régler les seuils sur vos mains
@@ -147,7 +150,7 @@ def default_jutsus() -> list[Jutsu]:
     return [InstantTransmission(), Substitution(), PeaceOut(), WaveGoodbye()]
 ```
 
-Choisissez une `key` libre : `b`, `d`, `s` et `q` appartiennent à l'application, et `t`, `n`, `p` aux jutsus existants.
+Choisissez une `key` libre : `b`, `d`, `s` et `q` appartiennent à l'application, `t`, `n`, `p`, `h` aux jutsus existants et `f` à « This is fine ».
 
 ## 6. Tester
 
@@ -218,6 +221,27 @@ class WaveGoodbye(Jutsu):
 À `gone = 0`, le résultat est l'image en direct ; à `gone = 1`, c'est exactement `absent`. Les deux bouts se raccordent donc sans saut à l'image figée et au direct.
 
 Attention : une main ouverte est un geste courant en réunion (saluer, expliquer). Pour un vrai signe, ajoutez un critère qui le rend volontaire, par exemple « main au-dessus de la tête » (`hand[WRIST][1] < face.forehead[1]`).
+
+## 8. Un overlay plutôt qu'un effet de disparition
+
+Si votre effet doit **ajouter** quelque chose à l'image tant qu'un signe dure, au lieu de vous faire disparaître, écrivez un `Overlay` (`gokucam/overlays/base.py`) et ajoutez-le à `default_overlays()` :
+
+```python
+class Overlay(ABC):
+    name, title, short, key, hint     # comme pour un jutsu ; la touche allume / éteint l'overlay
+    fade_in_seconds = 1.0
+    fade_out_seconds = 1.0
+    linger_seconds = 1.5              # continue ce temps-là après la fin du signe
+
+    def checks(self, signs) -> dict[str, bool]: ...                            # obligatoire
+    def start(self, scene) -> None: ...                                        # facultatif, une fois par démarrage
+    def render(self, image, scene, elapsed, level) -> np.ndarray: ...         # obligatoire
+```
+
+- `render()` dessine sur `image`, l'image sur le point de partir vers l'appel (le direct, un effet, ou l'image figée). `elapsed` est le temps écoulé depuis le démarrage de l'overlay, `level` son fondu de 0 à 1. À 0, il doit renvoyer `image` inchangée.
+- `scene.mask` est la personne dans `image` (tout à zéro quand vous êtes invisible) : multipliez votre calque par `1 − masque` pour rester derrière la personne, comme les flammes de « This is fine ».
+- Les overlays tournent à chaque image de l'appel, par-dessus tout le reste : gardez-les légers (mélanges avec `cv2.blendLinear` sur des images uint8, et ne traitez que la partie de l'image où vous dessinez).
+- `tests/test_app.py` contient un overlay minimal (`BlueTint`) et teste son cycle de vie ; `tests/test_overlays.py` teste « This is fine ».
 
 ## Liste de vérification
 

@@ -25,13 +25,14 @@ Ce document suit une image de la webcam à travers le programme, puis décrit ch
 
 ## 2. La détection
 
-`models.Detectors` regroupe trois modèles MediaPipe officiels, téléchargés une fois dans `models/` :
+`models.Detectors` regroupe quatre modèles MediaPipe officiels, téléchargés une fois dans `models/` :
 
 | Modèle | Sortie | Sert à |
 |---|---|---|
 | `selfie_segmenter_landscape` | probabilité « personne » par pixel | le masque de la personne : là où s'appliquent les effets |
 | `hand_landmarker` | 21 points par main, 2 mains max | les signes |
 | `blaze_face_short_range` | boîte et 6 points clés du visage | situer le front |
+| `efficientdet_lite0` | boîtes d'objets (les 80 catégories COCO ; seule « cup » est gardée) | repérer une tasse pour « This is fine » |
 
 Ils tournent en **mode vidéo** sur une copie **640×360** de l'image : le suivi rend les repères stables et peu coûteux d'une image à l'autre, et la petite taille garde la détection autour de 20 ms par image sur un M1.
 
@@ -39,7 +40,9 @@ Ils tournent en **mode vidéo** sur une copie **640×360** de l'image : le suivi
 
 **Front** (`hands.face_from_detection`) : BlazeFace donne les yeux et la bouche. Le front est extrapolé au-dessus des yeux, dans l'axe bouche → yeux, à 0,8 fois l'écart entre les yeux ; il suit donc l'inclinaison de la tête. Les mains cachent souvent le visage : le dernier visage vu est conservé une seconde.
 
-**Détection des mains sur l'image fixe** : le suivi vidéo a un angle mort. Quand les mains sont jointes doigts croisés (le signe de la Substitution), il suit **une seule main fusionnée** et ne cherche jamais la seconde, quel que soit le seuil de confiance. Un second détecteur de mains en **mode image** (sans suivi, confiance 0,3) trouve bien les deux mains sur la même image. Il ne tourne qu'à la demande (voir [3.3](#33-un-signe-à-deux-mains--la-substitution)), car il coûte environ 10 ms.
+**Détection des mains sur l'image fixe** : le suivi vidéo a un angle mort. Quand les mains sont jointes doigts croisés (le signe de la Substitution), il suit **une seule main fusionnée** et ne cherche jamais la seconde, quel que soit le seuil de confiance. Un second détecteur de mains en **mode image** (sans suivi, confiance 0,3) trouve bien les deux mains sur la même image. Il ne tourne qu'à la demande (voir [3.3](#33-un-signe-à-deux-mains--la-substitution)), et au plus une image sur trois, car il coûte environ 35 ms.
+
+**La détection d'objets** coûte autant que tous les autres modèles réunis (environ 18 ms). Elle tourne donc dans un **fil d'exécution en arrière-plan**, sur un autre cœur du processeur, et seulement quand une main est visible (pas de main, pas de tasse tenue). La boucle principale ne l'attend jamais : elle utilise le dernier résultat, vieux de quelques images au plus, ce qui suffit largement pour une tasse.
 
 ## 3. Reconnaître les signes
 
@@ -107,6 +110,7 @@ hidden  ──signe──> appearing ──(effet terminé)──> visible
 - Pendant un effet, `jutsu.render(scene, t, arriving)` est appelé avec `t = temps écoulé / durée`.
 - À la fin d'un départ, `jutsu.hidden_image(scene)` devient l'image figée, et `jutsu.leftover_box()` note ce qu'il a laissé (le tronc). L'arrivée suivante le reçoit dans `scene.leftover`, pour que la fumée de la Substitution couvre aussi un tronc laissé par un départ précédent.
 - On peut partir avec un jutsu et revenir avec un autre : chaque arrivée part de `scene.hidden`, quoi qu'il l'ait produit.
+- **Les overlays** ont leur propre petit cycle de vie, indépendant de celui-ci : un overlay démarre quand son signe a été tenu 0,35 s, reste actif tant que le signe est vu (plus `linger_seconds`, 1,5 s pour la tasse, pour que la cacher un instant n'éteigne pas le feu), et son `level` passe en fondu de 0 à 1 puis revient à 0. Il se dessine par-dessus ce que reçoit l'appel, après le jutsu. Sa touche l'allume quel que soit le signe.
 
 Une `Scene` contient tout ce dont un effet a besoin : l'image en direct, la photo de la pièce, l'image cachée actuelle, le masque de la personne en pleine résolution (et sa boîte englobante), la graine, le générateur aléatoire de l'image et la boîte du reste laissé.
 
@@ -161,6 +165,28 @@ Imite une vidéo très compressée, comme dans le mème « bye » :
 - Chaque bloc s'éteint à son propre moment ; ceux du haut (la tête) tiennent plus longtemps. Les survivants bavent sur le côté, ligne de blocs par ligne de blocs (`np.roll` par ligne), et scintillent.
 - Pour ce mème, jouer le départ à l'envers est ce qui rend le mieux : l'arrivée est un rembobinage avec la personne en direct.
 
+### 6.4 Dans le buisson (`jutsus/into_the_bush.py`)
+
+Homer Simpson qui recule dans la haie. Le signe est un doigt levé **au-dessus du front** : un doigt sur la bouche serait un « chut », et le suivi vidéo voit les mains jointes de la Substitution comme un seul index levé, mais devant le menton.
+
+- **Haie** : le vert cartoon uni mesuré sur l'extrait de référence (BGR 32, 139, 58), quelques taches légèrement plus foncées et de petits traits de feuilles vert foncé, générés une fois par départ. Elle couvre toute la largeur, du dessus de la tête de la personne jusqu'en bas, avec un sommet en bosses arrondies et un contour feuillu dentelé (du bruit haute fréquence ajouté à chaque bord), tracé en vert foncé.
+- **Pousse** (t 0 → 0,35) : la haie monte depuis le bas de l'image, derrière la personne.
+- **Fermeture** (t 0,35 → 1) : chaque pixel du corps reçoit une note : sa distance au contour du corps (transformée de distance), plus un bonus autour de l'emplacement habituel des yeux, plus du bruit feuillu. La haie recouvre les pixels **par rang** de cette note : la surface visible diminue régulièrement, du contour vers l'intérieur. Les parties les plus épaisses (le buste, puis le visage) restent en îlots, et le visage dépasse en dernier, comme dans le dessin animé.
+- Le masque de la personne est élargi pour les autres effets ; ici, il est resserré au contour réel, pour que la haie épouse le corps sans liseré.
+- **Retour** : le départ joué à l'envers, à partir de la haie que voit l'appel. Après le départ d'un autre jutsu (un tronc, par exemple), la haie apparaît d'abord en fondu sur cette image.
+
+### 6.5 This is fine (`overlays/this_is_fine.py`)
+
+Un overlay plutôt qu'un jutsu : vous ne disparaissez pas, la pièce prend feu autour de vous pendant que vous tenez votre tasse.
+
+- **Signe** (`mug_checks`) : une boîte « cup » du détecteur d'objets, avec au moins 3 repères de la main dessus ou à moins de 35 % de sa taille autour. Une tasse posée sur le bureau ne suffit pas.
+- **Flammes** : 9 emplacements répartis sur la largeur, qui apparaissent l'un après l'autre dans un ordre aléatoire en 2,4 s, chacun grandissant en 0,5 s. Un emplacement est un groupe de 3 à 5 **langues** : des polygones larges à la base et pointus au sommet, dont la largeur, le balancement et la hauteur ondulent avec des sinus, de plus en plus vers la pointe. Chaque langue est dessinée trois fois, comme dans la BD : un bord orange, un corps jaune et un cœur pâle. Les emplacements derrière la personne sont plus hauts, pour dépasser au-dessus des épaules.
+- **Toujours derrière vous** : le calque des flammes est multiplié par `1 − masque de la personne` avant la composition. Vous êtes donc assis devant le feu, comme le chien du mème.
+- **Lumière chaude** : toute l'image, vous compris, est teintée vers l'orange avec un léger scintillement.
+- **Plafond de fumée** : une bande sombre en haut, avec trois rangées de bouffées irrégulières le long de son bord inférieur (plus claires et cerclées de foncé devant, comme dans la BD) qui dérivent lentement dans des sens alternés et ondulent. Seuls les 20 % du haut de l'image sont traités.
+- **Sous-titre** : « This is fine. » s'écrit à 0,08 s par lettre après 1,4 s, en blanc cerné de noir, rendu avec Pillow et une police système grasse (la police intégrée d'OpenCV sert de repli). Chaque début de phrase est placé comme le serait la phrase complète, pour que le texte ne bouge pas pendant qu'il s'écrit, et les images rendues sont mises en cache.
+- **Coût** : environ 7 ms par image, grâce à des mélanges en entiers (`cv2.blendLinear`, `cv2.transform`) plutôt que des calculs en flottants sur toute l'image.
+
 ## 7. Webcam et caméra virtuelle
 
 **Choisir la vraie webcam** (`camera.py`) : une fois OBS installé, macOS compte deux caméras, et OpenCV donnait l'index 0 à *OBS Virtual Camera*. GokuCam lisait sa propre sortie. Deux garde-fous :
@@ -175,17 +201,20 @@ Mesuré sur un Apple M1 en 1280×720 :
 
 | Étape | Temps par image |
 |---|---|
-| Détection + machine à états (visible ou caché) | ~20 ms |
+| Détection + machine à états (suivre des mains coûte à peu près autant que les chercher) | ~30 ms |
+| Détection des mains sur image fixe (seulement quand un index levé est vu, une image sur trois) | ~35 ms, soit ~12 ms par image |
+| Détection d'objets (en arrière-plan, seulement quand une main est visible) | ~18 ms, hors de la boucle principale |
 | Effet Transmission instantanée | ~20 ms |
 | Effet Substitution | ~28 ms |
 | Effet Peace out | ~13 ms |
-| Détection des mains sur image fixe (seulement quand un index levé est vu) | ~10 ms |
+| Effet Dans le buisson | ~7 ms |
+| Overlay This is fine | ~7 ms |
 | Génération du tronc (une fois par Substitution) | ~90 ms |
 
-Les principales astuces : détection en 640×360, fumée au 1/4 de la résolution, flous en résolution réduite, et travail propre à chaque effet (tronc, graine, bruit) fait une seule fois dans `start()` plutôt qu'à chaque image.
+L'essentiel du temps est passé dans MediaPipe lui-même ; en particulier, le détecteur de mains cherche des paumes à chaque image tant qu'aucune main n'est suivie. Les astuces côté GokuCam : détection en 640×360, fumée au 1/4 de la résolution, flous en résolution réduite, mélanges en entiers, détecteurs lents espacés ou passés en arrière-plan, et travail propre à chaque effet (tronc, graine, bruit) fait une seule fois dans `start()` plutôt qu'à chaque image.
 
 ## 9. Vie privée
 
 - Les images sont traitées en mémoire et envoyées uniquement à la caméra virtuelle.
 - Rien n'est écrit sur le disque, sauf quand vous appuyez sur `S` : une capture de diagnostic est alors enregistrée dans `captures/`, exclu par `.gitignore`. Supprimez-le quand vous voulez.
-- Le seul accès réseau est le téléchargement des trois modèles MediaPipe depuis `storage.googleapis.com` au premier lancement.
+- Le seul accès réseau est le téléchargement des quatre modèles MediaPipe depuis `storage.googleapis.com` au premier lancement.

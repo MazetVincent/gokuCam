@@ -32,7 +32,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def self_test() -> int:
     """Loads the models and plays every jutsu (departure and arrival, including arriving
-    with a different jutsu than the one used to vanish) on synthetic frames."""
+    with a different jutsu than the one used to vanish) and every overlay on synthetic frames."""
     size = (1280, 720)
     rng = np.random.default_rng(0)
     with Detectors() as detectors:
@@ -57,7 +57,21 @@ def self_test() -> int:
                 now += 0.1
             assert app.state == expected, (name, app.state, expected)
             print(f"[self-test] {name or 'room photo'} -> {app.state} OK")
-    print("[self-test] OK: models loaded, every jutsu played.")
+        for name in app.overlays:  # switched on by hand, then off: fades in, draws, fades out
+            app.toggle_overlay(name, now)
+            for _ in range(40):
+                frame = rng.integers(0, 255, (size[1], size[0], 3), dtype=np.uint8)
+                out = app.step(frame, now)
+                now += 0.1
+            assert app.overlay_states[name].level == 1.0 and not np.array_equal(out, frame), name
+            app.toggle_overlay(name, now)
+            for _ in range(30):
+                frame = rng.integers(0, 255, (size[1], size[0], 3), dtype=np.uint8)
+                out = app.step(frame, now)
+                now += 0.1
+            assert app.overlay_states[name].level == 0.0 and np.array_equal(out, frame), name
+            print(f"[self-test] overlay {name} OK")
+    print("[self-test] OK: models loaded, every jutsu and overlay played.")
     return 0
 
 
@@ -78,7 +92,8 @@ def run(args: argparse.Namespace) -> int:
     try:
         with Detectors() as detectors:
             app = GokuCam(detectors, (width, height))
-            keys = {ord(jutsu.key): name for name, jutsu in app.jutsus.items()}
+            jutsu_keys = {ord(jutsu.key): name for name, jutsu in app.jutsus.items()}
+            overlay_keys = {ord(overlay.key): name for name, overlay in app.overlays.items()}
             app.recapture(time.monotonic())
             while True:
                 ok, frame = capture.read()
@@ -95,8 +110,10 @@ def run(args: argparse.Namespace) -> int:
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord("q"), 27) or cv2.getWindowProperty(PREVIEW_WINDOW, cv2.WND_PROP_VISIBLE) < 1:
                     break
-                if key in keys:
-                    app.trigger(now, keys[key])
+                if key in jutsu_keys:
+                    app.trigger(now, jutsu_keys[key])
+                elif key in overlay_keys:
+                    app.toggle_overlay(overlay_keys[key], now)
                 elif key == ord("b"):
                     app.recapture(now)
                 elif key == ord("d"):

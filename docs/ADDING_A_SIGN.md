@@ -11,6 +11,7 @@ In GokuCam, a sign and the effect it triggers form a **jutsu**. Adding one means
 - [5. Registering the jutsu](#5-registering-the-jutsu)
 - [6. Testing](#6-testing)
 - [7. Complete example](#7-complete-example)
+- [8. An overlay instead of a vanishing effect](#8-an-overlay-instead-of-a-vanishing-effect)
 - [Checklist](#checklist)
 
 ## 1. The contract
@@ -46,6 +47,7 @@ class SignInput:
     hands: list[np.ndarray]       # (21, 2) landmarks per tracked hand, in pixels of the 640×360 detection image
     face: Face | None             # face.forehead (x, y) and face.width; None if no face was seen recently
     still_hands: list[np.ndarray] # (lazy) hands re-detected on the still image, see below
+    objects: list[DetectedObject] # .label, .score, .box (x0, y0, x1, y1): objects in view, see below
 ```
 
 y grows **downwards**: "above" means a smaller y.
@@ -82,6 +84,7 @@ The constants (`WRIST`, `INDEX_TIP`, `MIDDLE_MCP`…) are in `gokucam/hands.py`.
 - **Clasped or overlapping hands**: video tracking may merge them into one hand. Ask for `signs.still_hands` (a detection on the still image, without tracking), but **only when the merged-hand pose is seen**: it costs about 10 ms per frame.
 - **Do not collide with existing signs**: add an excluding criterion. Peace out has "away from the forehead" so that it cannot fire when you do Instant Transmission; Substitution has "below the eyes".
 - **Avoid everyday gestures**: a sign you make without thinking (touching your face, a thumbs up during a call) will make you vanish by accident. Substitution checks for two hands precisely so that a "shush" gesture is not enough.
+- **Objects**: `signs.objects` lists what the object detector sees, only while a hand is in view. It only looks for the COCO categories listed in `models.OBJECT_LABELS` (just `"cup"` today); add the ones your sign needs (`"bottle"`, `"cell phone"`, `"book"`…). `mug_checks()` in `overlays/this_is_fine.py` shows how to check that a hand holds the object.
 - The face may be `None` (hands often hide it). Decide what that means for your sign: Instant Transmission requires a face; Substitution and Peace out treat "no face" as "far from the face".
 
 ## 3. Tuning thresholds on your hands
@@ -147,7 +150,7 @@ def default_jutsus() -> list[Jutsu]:
     return [InstantTransmission(), Substitution(), PeaceOut(), WaveGoodbye()]
 ```
 
-Pick a `key` that is not already used: `b`, `d`, `s` and `q` belong to the app, and `t`, `n`, `p` to the existing jutsus.
+Pick a `key` that is not already used: `b`, `d`, `s` and `q` belong to the app, `t`, `n`, `p`, `h` to the existing jutsus and `f` to "This is fine".
 
 ## 6. Testing
 
@@ -218,6 +221,27 @@ class WaveGoodbye(Jutsu):
 At `gone = 0` the result is the live frame; at `gone = 1` it is exactly `absent`, so both ends join the frozen image and live video without a jump.
 
 Beware: an open palm is a common gesture in a call (a wave, explaining something). For a real sign, add a criterion that makes it deliberate, for example "hand above the head" (`hand[WRIST][1] < face.forehead[1]`).
+
+## 8. An overlay instead of a vanishing effect
+
+If your effect should **add** something to the image while a sign lasts, rather than make you vanish, write an `Overlay` (`gokucam/overlays/base.py`) and list it in `default_overlays()`:
+
+```python
+class Overlay(ABC):
+    name, title, short, key, hint     # as for a jutsu; the key toggles the overlay
+    fade_in_seconds = 1.0
+    fade_out_seconds = 1.0
+    linger_seconds = 1.5              # keeps going this long after the sign stops
+
+    def checks(self, signs) -> dict[str, bool]: ...                            # required
+    def start(self, scene) -> None: ...                                        # optional, once per run
+    def render(self, image, scene, elapsed, level) -> np.ndarray: ...         # required
+```
+
+- `render()` draws on `image`, the frame about to be sent to the call (live, an effect, or the frozen image). `elapsed` is the time since the overlay started, `level` its fade from 0 to 1. At level 0 it must return `image` unchanged.
+- `scene.mask` is the person in `image` (all zeros while you are invisible): multiply your layer by `1 − mask` to stay behind the person, as the flames of "This is fine" do.
+- Overlays run on every frame of a call, on top of everything else: keep them cheap (blend with `cv2.blendLinear` on uint8 images, and only process the part of the frame you draw on).
+- `tests/test_app.py` has a minimal overlay (`BlueTint`) and tests its life cycle; `tests/test_overlays.py` tests "This is fine".
 
 ## Checklist
 
