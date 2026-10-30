@@ -7,6 +7,7 @@ from gokucam.jutsus import SignInput
 
 FACE_ON_HAND = Face(forehead=np.float32([295, 185]), width=120.0, seen_at=0.0)  # fingertips on the forehead
 FACE_ABOVE = Face(forehead=np.float32([300, 40]), width=120.0, seen_at=0.0)     # face well above the hands
+FACE_BELOW = Face(forehead=np.float32([300, 260]), width=120.0, seen_at=0.0)    # hand raised above the head
 
 
 def make_hand(fingers_apart: bool = False, open_palm: bool = False, offset=(0.0, 0.0),

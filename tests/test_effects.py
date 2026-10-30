@@ -2,6 +2,7 @@ import unittest
 
 import numpy as np
 
+from gokucam.jutsus import into_the_bush as bush
 from gokucam.jutsus import peace_out as po
 from gokucam.jutsus import substitution as sub
 from gokucam.jutsus.instant_transmission import render_teleport, tear_into_strands
@@ -102,6 +103,46 @@ class SubstitutionEffectTest(unittest.TestCase):
         smoke = sub.make_smoke(self.box, 4, sub.ARRIVAL_FADE, self.SIZE)
         self.assertTrue(np.array_equal(sub.render_smoke_arrival(self.frame, hidden, smoke, 0.0), hidden))
         self.assertTrue(np.array_equal(sub.render_smoke_arrival(self.frame, hidden, smoke, 1.0), self.frame))
+
+
+class IntoTheBushEffectTest(unittest.TestCase):
+    def setUp(self):
+        h, w = 360, 640
+        self.frame = np.full((h, w, 3), 210, np.uint8)  # light person and room
+        self.plate = np.full((h, w, 3), 180, np.uint8)
+        self.mask = np.zeros((h, w), np.float32)
+        self.mask[90:, 230:410] = 1.0                    # the person
+        self.shape = bush.hedge_shape((230.0, 90.0, 410.0, 360.0), (w, h), 4)
+
+    def render(self, t):
+        return bush.render_bush(self.frame, self.plate, self.mask, self.shape, t)
+
+    @staticmethod
+    def green(out):
+        return (out[..., 1].astype(int) - out[..., 2]) > 50
+
+    def test_starts_live_and_ends_with_the_room_behind_the_hedge(self):
+        self.assertTrue(np.array_equal(self.render(0.0), self.frame))
+        hidden = bush.hedge_over(self.plate, self.shape)
+        self.assertTrue(np.array_equal(self.render(1.0), hidden))
+        self.assertTrue(np.allclose(self.render(0.999), hidden, atol=3))
+        self.assertGreater(self.green(hidden).mean(), 0.6)          # mostly hedge
+        self.assertTrue((~self.green(hidden)[:5]).all())             # the room shows above it
+
+    def test_the_hedge_grows_around_the_person_who_stays_in_front(self):
+        early, grown = self.green(self.render(0.1)), self.green(self.render(0.34))
+        self.assertLess(early.mean(), grown.mean())
+        self.assertEqual(int(grown[150:330, 260:380].sum()), 0)     # not on the person yet
+        self.assertGreater(grown[:, :200].mean(), 0.5)              # around them
+
+    def test_the_hedge_closes_in_on_the_person_face_last(self):
+        def person(t):
+            return ~self.green(self.render(t))[90:, 230:410]
+        self.assertGreater(person(0.5).sum(), person(0.7).sum())
+        self.assertGreater(person(0.7).sum(), person(0.85).sum())
+        rows, _ = np.nonzero(person(0.85))
+        self.assertLess(np.median(rows), 120)                         # what is left is the face
+        self.assertEqual(int(person(0.97).sum()), 0)
 
 
 class PeaceOutEffectTest(unittest.TestCase):

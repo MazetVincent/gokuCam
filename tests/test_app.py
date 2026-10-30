@@ -5,17 +5,19 @@ import numpy as np
 from gokucam import app as appmod
 from gokucam.app import GokuCam
 from gokucam.jutsus import Jutsu, Scene, SignInput
-from gokucam.models import DETECT_SIZE
+from gokucam.models import DETECT_SIZE, DetectedObject, Detections
+from gokucam.overlays import Overlay
 
 
 class FakeDetectors:
-    """No MediaPipe: an empty person mask, no face, and the hands the test asks for."""
+    """No MediaPipe: an empty person mask, no face, and the hands / objects the test asks for."""
 
     def __init__(self):
         self.hands = []
+        self.objects = []
 
     def process(self, small):
-        return np.zeros(DETECT_SIZE[::-1], np.float32), self.hands, None
+        return Detections(np.zeros(DETECT_SIZE[::-1], np.float32), self.hands, None, self.objects)
 
     def hands_on_still_image(self):
         return []
@@ -52,7 +54,7 @@ class StateMachineTest(unittest.TestCase):
     def setUp(self):
         self.detectors = FakeDetectors()
         self.jutsu = RaisedHand()
-        self.cam = GokuCam(self.detectors, (320, 180), jutsus=[self.jutsu])
+        self.cam = GokuCam(self.detectors, (320, 180), jutsus=[self.jutsu], overlays=[])
         self.frame = np.full((180, 320, 3), 120, np.uint8)
         self.now = 0.0
 
@@ -90,9 +92,79 @@ class StateMachineTest(unittest.TestCase):
         self.assertEqual(self.cam.debug_lines(), ["Hand: missing a hand in view"])
 
 
+class BlueTint(Overlay):
+    """Minimal overlay: the sign is "a cup is visible"; it tints the image blue."""
+    name, title, short, key, hint = "blue_tint", "Blue tint", "Blue", "u", "show a cup"
+    fade_in_seconds = fade_out_seconds = 0.5
+    linger_seconds = 1.0
+
+    def __init__(self):
+        self.starts = 0
+
+    def checks(self, signs: SignInput) -> dict[str, bool]:
+        return {"cup in view": any(obj.label == "cup" for obj in signs.objects)}
+
+    def start(self, scene: Scene) -> None:
+        self.starts += 1
+
+    def render(self, image, scene, elapsed, level):
+        out = image.copy()
+        out[..., 0] = np.clip(image[..., 0] + 100 * level, 0, 255).astype(np.uint8)
+        return out
+
+
+class OverlayLifecycleTest(unittest.TestCase):
+    CUP = DetectedObject("cup", 0.9, (100.0, 100.0, 140.0, 150.0))
+
+    def setUp(self):
+        self.detectors = FakeDetectors()
+        self.overlay = BlueTint()
+        self.cam = GokuCam(self.detectors, (320, 180), jutsus=[], overlays=[self.overlay])
+        self.frame = np.full((180, 320, 3), 100, np.uint8)
+        self.now = 0.0
+
+    def run_for(self, seconds, cup=False):
+        self.detectors.objects = [self.CUP] if cup else []
+        out = None
+        end = self.now + seconds
+        while self.now < end:
+            out = self.cam.step(self.frame, self.now)
+            self.now += 1 / 30
+        return out
+
+    def state(self):
+        return self.cam.overlay_states["blue_tint"]
+
+    def test_fades_in_while_the_sign_lasts_and_out_after_it(self):
+        self.run_for(appmod.PLATE_COUNTDOWN + 0.1)
+        out = self.run_for(1.5, cup=True)
+        self.assertEqual(self.state().level, 1.0)
+        self.assertEqual(int(out[0, 0, 0]), 200)                      # fully drawn
+        self.run_for(0.5)                                             # cup hidden for a moment
+        self.assertTrue(self.state().active)                          # lingers
+        out = self.run_for(2.0)
+        self.assertEqual(self.state().level, 0.0)
+        self.assertTrue(np.array_equal(out, self.frame))              # gone without a trace
+        self.assertEqual(self.overlay.starts, 1)
+
+    def test_key_toggles_it_without_the_sign(self):
+        self.run_for(appmod.PLATE_COUNTDOWN + 0.1)
+        self.cam.toggle_overlay("blue_tint", self.now)
+        self.run_for(2.0)                                             # no cup, still on
+        self.assertEqual(self.state().level, 1.0)
+        self.cam.toggle_overlay("blue_tint", self.now)
+        self.run_for(1.0)
+        self.assertEqual(self.state().level, 0.0)
+
+    def test_not_during_the_room_photo(self):
+        out = self.run_for(2.0, cup=True)
+        self.assertEqual(self.cam.state, "plate")
+        self.assertTrue(np.array_equal(out, self.frame))
+
+
 class RoomPhotoTest(unittest.TestCase):
     def setUp(self):
-        self.cam = GokuCam(None, (320, 180), jutsus=[])
+        self.cam = GokuCam(None, (320, 180), jutsus=[], overlays=[])
         self.room = np.full((180, 320, 3), 120, np.uint8)
 
     def feed(self, start, end, step=1 / 30):

@@ -1,8 +1,9 @@
-"""Shows what the detectors see on a photo of a sign, and which criteria of each jutsu pass.
+"""Shows what the detectors see on a photo of a sign, and which criteria of each jutsu and
+overlay pass.
 
     .venv/bin/python tools/inspect_sign.py photo.jpg [--out annotated.jpg] [--json fixture.json]
 
-- prints the criteria of every registered jutsu (the same ones `--debug` shows live);
+- prints the criteria of every registered jutsu and overlay (the same ones `--debug` shows live);
 - `--out` saves the photo with the landmarks drawn (video tracking in green, still-image
   detection in magenta);
 - `--json` saves the landmarks, ready to use as a test fixture (see tests/data/).
@@ -26,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from gokucam.hands import face_from_detection  # noqa: E402
 from gokucam.jutsus import SignInput, default_jutsus  # noqa: E402
 from gokucam.models import DETECT_SIZE, Detectors, ensure_models  # noqa: E402
+from gokucam.overlays import default_overlays  # noqa: E402
 
 
 def to_detection_image(image: np.ndarray) -> np.ndarray:
@@ -53,17 +55,22 @@ def main() -> int:
     small = to_detection_image(image)
     with Detectors() as detectors:
         for _ in range(10):  # video mode: let tracking settle on the still photo
-            _, hands, detection = detectors.process(small)
+            detectors.process(small)
+        detectors.wait_for_objects()  # object detection runs in the background
+        detections = detectors.process(small)
         still = detectors.hands_on_still_image()
-    face = face_from_detection(detection, DETECT_SIZE, 0.0) if detection is not None else None
+    hands, objects = detections.hands, detections.objects
+    face = face_from_detection(detections.face, DETECT_SIZE, 0.0) if detections.face is not None else None
 
-    print(f"face: {'yes' if face else 'no'}   hands (video tracking): {len(hands)}   hands (still image): {len(still)}")
-    signs = SignInput(hands, face, lambda: still)
-    for jutsu in default_jutsus():
-        checks = jutsu.checks(signs)
+    print(f"face: {'yes' if face else 'no'}   hands (video tracking): {len(hands)}   "
+          f"hands (still image): {len(still)}   objects: "
+          + (", ".join(f"{o.label} {o.score:.2f}" for o in objects) or "none"))
+    signs = SignInput(hands, face, lambda: still, objects)
+    for item in (*default_jutsus(), *default_overlays()):
+        checks = item.checks(signs)
         verdict = "DETECTED" if all(checks.values()) else "no"
         details = ", ".join(f"{name} {'OK' if ok else '--'}" for name, ok in checks.items())
-        print(f"  {jutsu.title:32} {verdict:9} {details}")
+        print(f"  {item.title:32} {verdict:9} {details}")
 
     if args.out:
         out = small.copy()
@@ -73,11 +80,17 @@ def main() -> int:
                     cv2.circle(out, (int(x), int(y)), 2, color, -1)
         if face is not None:
             cv2.circle(out, tuple(int(v) for v in face.forehead), int(0.55 * face.width), (0, 200, 255), 1)
+        for obj in objects:
+            x0, y0, x1, y1 = (int(v) for v in obj.box)
+            cv2.rectangle(out, (x0, y0), (x1, y1), (255, 160, 0), 1)
+            cv2.putText(out, obj.label, (x0, y0 - 3), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 160, 0), 1)
         cv2.imwrite(args.out, cv2.resize(out, None, fx=2, fy=2))
         print(f"annotated image: {args.out}")
     if args.json:
         fixture = {"video_hands": [h.round(1).tolist() for h in hands],
                    "still_hands": [h.round(1).tolist() for h in still],
+                   "objects": [{"label": o.label, "score": round(o.score, 2), "box": [round(v, 1) for v in o.box]}
+                               for o in objects],
                    "face": None if face is None else {"forehead": face.forehead.round(1).tolist(),
                                                        "width": round(face.width, 1)}}
         Path(args.json).write_text(json.dumps(fixture))

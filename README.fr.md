@@ -11,10 +11,17 @@ GokuCam se place entre votre vraie webcam et votre application de visio. Elle ob
 | **Transmission instantanée** (Goku) : index et majeur collés sur le front | Des lignes d'énergie bleues apparaissent autour de vous, des bandes de votre corps se déchirent verticalement, puis tout votre corps se resserre en une fine colonne et disparaît |
 | **Substitution** (Naruto) : mains jointes doigts croisés, les deux index tendus et collés vers le haut, devant le menton | Vous disparaissez dans un nuage de fumée ; quand il se dissipe, un tronc d'arbre se tient debout là où vous étiez assis |
 | **Peace out** : un V, loin du visage | Vous devenez un fantôme translucide en blocs de compression, quelques blocs bavent sur le côté, et vous n'êtes plus là (le mème « bye ») |
+| **Dans le buisson** (Homer Simpson) : un doigt levé au-dessus de la tête | Une haie cartoon pousse autour de vous et au-dessus, puis se referme sur vous, le visage en dernier ; le retour la joue à l'envers |
 
 Refaites n'importe quel signe pour revenir : le retour joue l'effet d'arrivée de ce signe.
 
-Tout tourne en local. Aucune image n'est enregistrée ni envoyée ailleurs qu'à l'appel lui-même. Le seul accès réseau est le téléchargement, au premier lancement, de trois modèles MediaPipe officiels de Google.
+Et un effet qui ne fait pas disparaître, un **overlay** qui dure tant que son signe est tenu :
+
+| Signe | Effet |
+|---|---|
+| **This is fine** : prenez votre tasse en main | Des flammes cartoon apparaissent l'une après l'autre à différents endroits autour de vous (toujours derrière vous), un plafond de fumée envahit le haut de l'écran, et « This is fine. » s'écrit lettre par lettre |
+
+Tout tourne en local. Aucune image n'est enregistrée ni envoyée ailleurs qu'à l'appel lui-même. Le seul accès réseau est le téléchargement, au premier lancement, de quatre modèles MediaPipe officiels de Google.
 
 ## Sommaire
 
@@ -49,7 +56,7 @@ Tout tourne en local. Aucune image n'est enregistrée ni envoyée ailleurs qu'à
    cd gokuCam
    ./run.command
    ```
-   Le premier lancement crée un environnement virtuel dans `.venv/`, installe les dépendances et télécharge les modèles dans `models/` (environ 8 Mo). Sur macOS, vous pouvez aussi double-cliquer sur `run.command` dans le Finder.
+   Le premier lancement crée un environnement virtuel dans `.venv/`, installe les dépendances et télécharge les modèles dans `models/` (environ 13 Mo). Sur macOS, vous pouvez aussi double-cliquer sur `run.command` dans le Finder.
 
 3. **Autorisez l'accès à la caméra** quand macOS le demande. L'autorisation va à l'application qui lance GokuCam : Terminal, iTerm, votre IDE…
 
@@ -60,13 +67,14 @@ Tout tourne en local. Aucune image n'est enregistrée ni envoyée ailleurs qu'à
    - **Teams** : *Paramètres > Appareils > Caméra*
    - **Slack** (huddles) : la flèche à côté du bouton caméra, ou *Préférences > Audio et vidéo*
    - Quittez et rouvrez l'application (Cmd+Q) si la caméra n'apparaît pas.
-3. **Tenez un signe environ 0,3 s** pour disparaître, puis de nouveau pour revenir.
+3. **Tenez un signe environ 0,3 s** pour disparaître, puis de nouveau pour revenir. Prenez votre tasse pour « This is fine » ; reposez-la et le feu s'éteint.
 
 Gardez la fenêtre d'aperçu ouverte pendant l'appel : la fermer coupe la caméra virtuelle. Les indications et le debug n'apparaissent que dans l'aperçu ; l'appel reçoit toujours une image propre.
 
 | Touche (dans l'aperçu) | Action |
 |---|---|
-| `T` / `N` / `P` | Jouer Transmission instantanée / Substitution / Peace out sans faire le signe |
+| `T` / `N` / `P` / `H` | Jouer Transmission instantanée / Substitution / Peace out / Dans le buisson sans faire le signe |
+| `F` | Allumer ou éteindre « This is fine » sans la tasse |
 | `B` | Refaire la photo de la pièce |
 | `D` | Debug : pour chaque signe, affiche les critères qui manquent |
 | `S` | Enregistrer une capture de diagnostic (caméra, sortie, photo de la pièce, masque) dans `captures/` |
@@ -94,14 +102,16 @@ Options en ligne de commande (`./run.command --help`) :
 ```
 webcam ──> détection (640×360) ──> signes ──> machine à états ──> effet ──> caméra virtuelle ──> Teams / Slack
             · masque de la personne             photo → visible → disparition → caché → retour → visible
-            · repères des mains
+            · repères des mains                                                + overlays par-dessus
             · visage
+            · objets (tasse)
 ```
 
-- **Détection** : trois modèles MediaPipe tournent sur une copie réduite de chaque image : un segmenteur de personne (le masque), un détecteur de repères de la main (21 points par main) et un détecteur de visage (pour situer le front).
+- **Détection** : des modèles MediaPipe tournent sur une copie réduite de chaque image : un segmenteur de personne (le masque), un détecteur de repères de la main (21 points par main), un détecteur de visage (pour situer le front) et, quand une main est visible, un détecteur d'objets (pour repérer une tasse) sur un fil d'exécution en arrière-plan.
 - **Signes** : chaque signe est un ensemble de critères géométriques nommés sur les repères, par exemple « index tendu » ou « doigts collés ». Les seuils sont relatifs à la taille de la main, donc les signes marchent près comme loin de la caméra. Un signe doit être tenu 0,35 s et ne se déclenche qu'une fois, jusqu'à ce qu'on le relâche.
 - **Invisibilité** : plutôt que de vous effacer de l'image en direct, ce qui laisse ombres, halos et variations d'exposition, GokuCam envoie à l'appel **une photo de la pièce vide** prise au démarrage, avec un léger grain de capteur animé. La vidéo en direct ne revient qu'au signe suivant.
-- **Effets** : chaque effet est une fonction de `t`, de 0 à 1, qui compose l'image en direct, le masque de la personne et la photo de la pièce avec OpenCV et NumPy. Ils tournent en temps réel : 13 à 28 ms par image sur un M1.
+- **Effets** : chaque effet est une fonction de `t`, de 0 à 1, qui compose l'image en direct, le masque de la personne et la photo de la pièce avec OpenCV et NumPy. Ils tournent en temps réel : 7 à 28 ms par image sur un M1, en plus d'environ 30 ms de détection.
+- **Overlays** : ils vivent en dehors du cycle disparition / retour. Ils apparaissent en fondu quand leur signe est tenu, durent tant qu'il l'est (et un instant de plus, pour que cacher la tasse une seconde n'éteigne pas le feu), et se dessinent par-dessus ce que reçoit l'appel.
 
 Toute l'histoire, y compris les choix de conception et ce qui n'a pas marché, est dans **[docs/fr/FONCTIONNEMENT.md](docs/fr/FONCTIONNEMENT.md)**.
 
@@ -121,7 +131,12 @@ gokucam/
     instant_transmission.py
     substitution.py
     peace_out.py
+    into_the_bush.py
     __init__.py     registre des jutsus
+  overlays/
+    base.py         le contrat d'un overlay : checks() + render(level)
+    this_is_fine.py
+    __init__.py     registre des overlays
 tests/              tests unitaires (sans webcam ni MediaPipe)
 tools/              inspect_sign.py : ce que les détecteurs voient d'un signe sur une photo
 docs/               fonctionnement, ajout d'un signe (anglais et français)
@@ -146,16 +161,16 @@ class Wave(Jutsu):
         ...
 ```
 
-Ajoutez-le à `default_jutsus()` dans `gokucam/jutsus/__init__.py`, et l'application fait le reste : maintien du signe, raccourci clavier, debug, image figée, self-test. Le guide pas à pas (carte des repères, fonctions de géométrie, réglage des seuils sur vos mains, tests) est dans **[docs/fr/AJOUTER_UN_SIGNE.md](docs/fr/AJOUTER_UN_SIGNE.md)**.
+Ajoutez-le à `default_jutsus()` dans `gokucam/jutsus/__init__.py`, et l'application fait le reste : maintien du signe, raccourci clavier, debug, image figée, self-test. Un overlay fonctionne de la même façon (`gokucam/overlays/`), avec un `render()` qui dessine par-dessus l'image à un niveau de fondu donné. Le guide pas à pas (carte des repères, fonctions de géométrie, objets comme la tasse, réglage des seuils sur vos mains, tests) est dans **[docs/fr/AJOUTER_UN_SIGNE.md](docs/fr/AJOUTER_UN_SIGNE.md)**.
 
 ## Tests
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -t .   # 42 tests, quelques secondes, sans webcam
+.venv/bin/python -m unittest discover -s tests -t .   # 60 tests, quelques secondes, sans webcam
 ./run.command --self-test                             # tout le pipeline avec les vrais modèles
 ```
 
-Les tests couvrent les signes (y compris des repères enregistrés sur une vraie photo du signe de la Substitution), la première et la dernière image de chaque effet ainsi que ses phases clés, la machine à états avec un faux jutsu, la photo de la pièce et le choix de la caméra.
+Les tests couvrent les signes (y compris des repères enregistrés sur une vraie photo du signe de la Substitution), la première et la dernière image de chaque effet ainsi que ses phases clés, l'overlay (flammes derrière vous, sous-titre tapé, fondus), la machine à états avec un faux jutsu et un faux overlay, la photo de la pièce et le choix de la caméra.
 
 ## Dépannage
 
@@ -167,14 +182,15 @@ Les tests couvrent les signes (y compris des repères enregistrés sur une vraie
 | Un bref flash magenta dans l'appel au démarrage | Normal : GokuCam vérifie qu'il ne lit pas sa propre sortie |
 | Un signe ne se déclenche pas | Appuyez sur `D` et lisez le critère qui manque ; voir [docs/fr/AJOUTER_UN_SIGNE.md](docs/fr/AJOUTER_UN_SIGNE.md#3-régler-les-seuils-sur-vos-mains) |
 | Vous apparaissez sur la photo de la pièce | Appuyez sur `B` et sortez complètement du champ pendant le compte à rebours |
+| « This is fine » ne démarre pas | Appuyez sur `D` : « mug in view » veut dire que le détecteur ne reconnaît pas votre tasse (changez d'angle, gardez-la dans la lumière) ; « hand on the mug » veut dire que votre main n'est pas vue dessus |
 
 ## Crédits
 
-- [MediaPipe](https://ai.google.dev/edge/mediapipe) (Google) pour la segmentation, les repères de la main et la détection du visage
-- [OpenCV](https://opencv.org/) et [NumPy](https://numpy.org/) pour tout le traitement d'image
+- [MediaPipe](https://ai.google.dev/edge/mediapipe) (Google) pour la segmentation, les repères de la main, la détection du visage et des objets
+- [OpenCV](https://opencv.org/) et [NumPy](https://numpy.org/) pour tout le traitement d'image, [Pillow](https://python-pillow.org/) pour le texte du sous-titre
 - [pyvirtualcam](https://github.com/letmaik/pyvirtualcam) et [OBS Studio](https://obsproject.com/) pour la caméra virtuelle
 
-Les effets s'inspirent de *Dragon Ball Z*, de *Naruto* et d'un mème internet. C'est un projet de fan, sans lien avec leurs auteurs ou éditeurs ; aucune image de ces œuvres n'est incluse : tout est dessiné en code.
+Les effets s'inspirent de *Dragon Ball Z*, de *Naruto*, des *Simpson*, du mème « bye » et de la BD « This is fine » de K.C. Green. C'est un projet de fan, sans lien avec leurs auteurs ou éditeurs ; aucune image de ces œuvres n'est incluse : tout est dessiné en code.
 
 ## Licence
 

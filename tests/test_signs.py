@@ -6,10 +6,10 @@ from unittest import mock
 import numpy as np
 
 from gokucam.hands import HOLD_SECONDS, Face, GestureTracker
-from gokucam.jutsus import InstantTransmission, PeaceOut, SignInput, Substitution
+from gokucam.jutsus import InstantTransmission, IntoTheBush, PeaceOut, SignInput, Substitution
 from gokucam.jutsus.substitution import single_index_up
 
-from .helpers import FACE_ABOVE, FACE_ON_HAND, joined_hands, make_hand, signs
+from .helpers import FACE_ABOVE, FACE_BELOW, FACE_ON_HAND, joined_hands, make_hand, signs
 
 
 class InstantTransmissionSignTest(unittest.TestCase):
@@ -68,6 +68,28 @@ class SubstitutionSignTest(unittest.TestCase):
         detect_still.reset_mock()
         self.jutsu.detected(SignInput([make_hand(open_palm=True)], FACE_ABOVE, detect_still))
         detect_still.assert_not_called()
+
+
+class IntoTheBushSignTest(unittest.TestCase):
+    jutsu = IntoTheBush()
+
+    def test_one_finger_raised_above_the_head(self):
+        self.assertTrue(self.jutsu.detected(signs([make_hand(index_only=True)], FACE_BELOW)))
+
+    def test_a_finger_in_front_of_the_face_is_not_the_sign(self):  # "shush", or the Substitution
+        self.assertFalse(self.jutsu.detected(signs([make_hand(index_only=True)], FACE_ABOVE)))
+
+    def test_two_fingers_or_an_open_palm_are_not_the_sign(self):
+        self.assertFalse(self.jutsu.detected(signs([make_hand()], FACE_BELOW)))
+        self.assertFalse(self.jutsu.detected(signs([make_hand(open_palm=True)], FACE_BELOW)))
+
+    def test_does_not_steal_the_other_signs(self):
+        others = [InstantTransmission(), Substitution(), PeaceOut()]
+        raised = signs([make_hand(index_only=True)], FACE_BELOW)
+        self.assertFalse(any(jutsu.detected(raised) for jutsu in others))
+        for hands, face in (([make_hand()], FACE_ON_HAND), (joined_hands(), FACE_ABOVE),
+                            ([make_hand(fingers_apart=True)], FACE_ABOVE)):
+            self.assertFalse(self.jutsu.detected(signs(hands, face)))
 
 
 class PeaceOutSignTest(unittest.TestCase):
