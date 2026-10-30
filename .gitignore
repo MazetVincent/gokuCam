@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Downloaded at first run (see gokucam/models.py)
+models/
+*.part
+
+# Diagnostic snapshots (S key): photos of you and your room, never commit them
+captures/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
