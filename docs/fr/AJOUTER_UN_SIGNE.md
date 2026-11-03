@@ -150,7 +150,7 @@ def default_jutsus() -> list[Jutsu]:
     return [InstantTransmission(), Substitution(), PeaceOut(), WaveGoodbye()]
 ```
 
-Choisissez une `key` libre : `b`, `d`, `s` et `q` appartiennent à l'application, `t`, `n`, `p`, `h` aux jutsus existants et `f` à « This is fine ».
+Choisissez une `key` libre : `b`, `d`, `s` et `q` appartiennent à l'application, `t`, `n`, `p`, `h` aux jutsus existants, `f` et `c` aux overlays.
 
 ## 6. Tester
 
@@ -241,6 +241,7 @@ class Overlay(ABC):
 - `render()` dessine sur `image`, l'image sur le point de partir vers l'appel (le direct, un effet, ou l'image figée). `elapsed` est le temps écoulé depuis le démarrage de l'overlay, `level` son fondu de 0 à 1. À 0, il doit renvoyer `image` inchangée.
 - `scene.mask` est la personne dans `image` (tout à zéro quand vous êtes invisible) : multipliez votre calque par `1 − masque` pour rester derrière la personne, comme les flammes de « This is fine ».
 - Les overlays tournent à chaque image de l'appel, par-dessus tout le reste : gardez-les légers (mélanges avec `cv2.blendLinear` sur des images uint8, et ne traitez que la partie de l'image où vous dessinez).
+- Pour que l'overlay se **rejoue à l'envers** quand le signe s'arrête (comme « Absolute cinema »), faites dépendre `render()` uniquement de `level`, pas de `elapsed` : le fondu de sortie rejoue alors le fondu d'entrée à l'envers. `gokucam.fx` propose `text_sprite()` pour le texte (n'importe quelle police, espacement des lettres, écriture lettre par lettre) et `tight_mask()` pour dessiner juste derrière la personne sans liseré.
 - `tests/test_app.py` contient un overlay minimal (`BlueTint`) et teste son cycle de vie ; `tests/test_overlays.py` teste « This is fine ».
 
 ## Liste de vérification

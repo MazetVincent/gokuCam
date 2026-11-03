@@ -187,6 +187,17 @@ An overlay rather than a jutsu: you do not vanish, the room catches fire around 
 - **Caption**: "This is fine." is typed at 0.08 s per letter after 1.4 s, white with a black outline, rendered with Pillow and a bold system font (OpenCV's own font is the fallback). Each prefix is laid out as the full caption would be, so the text does not shift while it is being typed, and rendered sprites are cached.
 - **Cost**: about 7 ms per frame, thanks to integer blending (`cv2.blendLinear`, `cv2.transform`) instead of float arithmetic on the whole frame.
 
+### 6.6 Absolute cinema (`overlays/absolute_cinema.py`)
+
+The "Absolute cinema" meme: a black and white still framed by red stage curtains. The sign is two open palms (all four fingers extended) raised above the forehead, one on each side.
+
+- **Played by its level only**: every step is a function of the overlay's fade level, never of time. While the sign is held the level rises over 1.6 s; when the hands come down (0.3 s of grace) it falls back over 1.2 s, which replays the animation backwards down to the live video.
+- **Black and white** (level 0 → 0.4): the whole picture is converted to slightly contrasted grey, with a vignette.
+- **Curtains** (0.15 → 0.85): two red velvet panels slide in from the sides and meet behind the person. Each panel is generated once: folds as a sum of cosines across the width, an exponent on the sheen for deep shadows, darker top and bottom, fine vertical streaks of velvet, and a dark hem on the moving edge, which is slightly wavy. The panels carry their folds as they slide.
+- **Valance** (0.05 → 0.6): a velvet band with a row of swags and a gold fringe drops in from the top of the frame.
+- **Title** (0.8 → 1): "ABSOLUTE CINEMA" in bold serif capitals, letter-spaced, once the curtains are closed.
+- **Right behind the person**: curtains and valance are multiplied by `1 − tight mask`, the person mask brought back to the real outline (`fx.tight_mask`), so that no strip of the room shows around you.
+
 ## 7. Webcam and virtual camera
 
 **Picking the real webcam** (`camera.py`): once OBS is installed, macOS has two cameras, and OpenCV gave index 0 to *OBS Virtual Camera*. GokuCam was reading its own output. Two safeguards:
@@ -209,6 +220,7 @@ Measured on an Apple M1 at 1280×720:
 | Peace out effect | ~13 ms |
 | Into the bush effect | ~7 ms |
 | This is fine overlay | ~7 ms |
+| Absolute cinema overlay | ~14 ms |
 | Log generation (once per Substitution) | ~90 ms |
 
 Most of the time goes into MediaPipe itself; in particular, the hand landmarker looks for palms on every frame while no hand is tracked. The tricks on GokuCam's side: detection at 640×360, smoke at 1/4 resolution, blurs at reduced resolution, integer blending, slow detectors throttled or moved to a background thread, and per-effect work (log, seed, noise) done once in `start()` rather than every frame.

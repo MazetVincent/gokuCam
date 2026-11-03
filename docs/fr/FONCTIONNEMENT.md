@@ -187,6 +187,17 @@ Un overlay plutôt qu'un jutsu : vous ne disparaissez pas, la pièce prend feu a
 - **Sous-titre** : « This is fine. » s'écrit à 0,08 s par lettre après 1,4 s, en blanc cerné de noir, rendu avec Pillow et une police système grasse (la police intégrée d'OpenCV sert de repli). Chaque début de phrase est placé comme le serait la phrase complète, pour que le texte ne bouge pas pendant qu'il s'écrit, et les images rendues sont mises en cache.
 - **Coût** : environ 7 ms par image, grâce à des mélanges en entiers (`cv2.blendLinear`, `cv2.transform`) plutôt que des calculs en flottants sur toute l'image.
 
+### 6.6 Absolute cinema (`overlays/absolute_cinema.py`)
+
+Le mème « Absolute cinema » : une image en noir et blanc encadrée de rideaux de théâtre rouges. Le signe : les deux paumes ouvertes (les quatre doigts tendus) levées au-dessus du front, une de chaque côté.
+
+- **Piloté uniquement par son niveau** : chaque étape est une fonction du niveau de fondu de l'overlay, jamais du temps. Tant que le signe est tenu, le niveau monte en 1,6 s ; quand les mains redescendent (0,3 s de tolérance), il redescend en 1,2 s, ce qui rejoue l'animation à l'envers jusqu'au flux en direct.
+- **Noir et blanc** (niveau 0 → 0,4) : toute l'image passe en gris légèrement contrasté, avec un vignettage.
+- **Rideaux** (0,15 → 0,85) : deux pans de velours rouge glissent depuis les côtés et se rejoignent derrière la personne. Chaque pan est généré une fois : des plis obtenus par une somme de cosinus sur la largeur, un exposant sur le reflet pour des ombres profondes, un haut et un bas plus sombres, de fines stries verticales de velours, et un ourlet sombre sur le bord mobile, légèrement ondulé. Les pans emportent leurs plis en glissant.
+- **Lambrequin** (0,05 → 0,6) : une bande de velours avec une rangée de drapés et une frange dorée descend du haut de l'image.
+- **Titre** (0,8 → 1) : « ABSOLUTE CINEMA » en capitales grasses à empattements, espacées, une fois les rideaux fermés.
+- **Juste derrière la personne** : rideaux et lambrequin sont multipliés par `1 − masque resserré`, le masque de la personne ramené au contour réel (`fx.tight_mask`), pour qu'aucune bande de la pièce n'apparaisse autour de vous.
+
 ## 7. Webcam et caméra virtuelle
 
 **Choisir la vraie webcam** (`camera.py`) : une fois OBS installé, macOS compte deux caméras, et OpenCV donnait l'index 0 à *OBS Virtual Camera*. GokuCam lisait sa propre sortie. Deux garde-fous :
@@ -209,6 +220,7 @@ Mesuré sur un Apple M1 en 1280×720 :
 | Effet Peace out | ~13 ms |
 | Effet Dans le buisson | ~7 ms |
 | Overlay This is fine | ~7 ms |
+| Overlay Absolute cinema | ~14 ms |
 | Génération du tronc (une fois par Substitution) | ~90 ms |
 
 L'essentiel du temps est passé dans MediaPipe lui-même ; en particulier, le détecteur de mains cherche des paumes à chaque image tant qu'aucune main n'est suivie. Les astuces côté GokuCam : détection en 640×360, fumée au 1/4 de la résolution, flous en résolution réduite, mélanges en entiers, détecteurs lents espacés ou passés en arrière-plan, et travail propre à chaque effet (tronc, graine, bruit) fait une seule fois dans `start()` plutôt qu'à chaque image.

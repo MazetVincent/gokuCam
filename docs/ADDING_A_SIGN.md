@@ -150,7 +150,7 @@ def default_jutsus() -> list[Jutsu]:
     return [InstantTransmission(), Substitution(), PeaceOut(), WaveGoodbye()]
 ```
 
-Pick a `key` that is not already used: `b`, `d`, `s` and `q` belong to the app, `t`, `n`, `p`, `h` to the existing jutsus and `f` to "This is fine".
+Pick a `key` that is not already used: `b`, `d`, `s` and `q` belong to the app, `t`, `n`, `p`, `h` to the existing jutsus, `f` and `c` to the overlays.
 
 ## 6. Testing
 
@@ -241,6 +241,7 @@ class Overlay(ABC):
 - `render()` draws on `image`, the frame about to be sent to the call (live, an effect, or the frozen image). `elapsed` is the time since the overlay started, `level` its fade from 0 to 1. At level 0 it must return `image` unchanged.
 - `scene.mask` is the person in `image` (all zeros while you are invisible): multiply your layer by `1 − mask` to stay behind the person, as the flames of "This is fine" do.
 - Overlays run on every frame of a call, on top of everything else: keep them cheap (blend with `cv2.blendLinear` on uint8 images, and only process the part of the frame you draw on).
+- To make the overlay play **backwards** when the sign stops (as "Absolute cinema" does), make `render()` depend only on `level`, not on `elapsed`: the fade out then replays the fade in in reverse. `gokucam.fx` has `text_sprite()` for text (any font, letter spacing, typed letter by letter) and `tight_mask()` for drawing right behind the person without a halo.
 - `tests/test_app.py` has a minimal overlay (`BlueTint`) and tests its life cycle; `tests/test_overlays.py` tests "This is fine".
 
 ## Checklist
