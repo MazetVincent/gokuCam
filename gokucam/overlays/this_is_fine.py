@@ -9,13 +9,10 @@ you hold the mug.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
-from pathlib import Path
-
 import cv2
 import numpy as np
 
-from ..fx import smoothstep
+from ..fx import blend, paste, smoothstep, text_sprite
 from ..jutsus.base import Box, Scene, SignInput
 from .base import Overlay
 
@@ -161,61 +158,6 @@ def draw_smoke_ceiling(layer: np.ndarray, alpha: np.ndarray, t: float, level: fl
             cv2.circle(alpha, (int(cx), int(cy)), radius + 3, 255, -1, cv2.LINE_AA)
 
 
-# --------------------------------------------------------------------------- caption
-
-@lru_cache(maxsize=4)
-def caption_font(size: int):
-    """A bold TrueType font through Pillow, or None (then OpenCV's built-in font is used)."""
-    try:
-        from PIL import ImageFont
-    except ImportError:
-        return None
-    for path in FONTS:
-        if Path(path).is_file():
-            return ImageFont.truetype(path, size)
-    return None
-
-
-@lru_cache(maxsize=32)
-def caption_sprite(shown: str, full: str, size: int) -> np.ndarray:
-    """BGRA image of the first letters of the caption, laid out as the full caption would
-    be (so the text does not move while it is being typed): white with a black outline."""
-    font = caption_font(size)
-    stroke = max(size // 12, 2)
-    if font is not None:
-        from PIL import Image, ImageDraw
-
-        x0, y0, x1, y1 = font.getbbox(full, stroke_width=stroke)
-        image = Image.new("RGBA", (x1 - x0 + 2 * stroke, y1 - y0 + 2 * stroke), (0, 0, 0, 0))
-        ImageDraw.Draw(image).text((stroke - x0, stroke - y0), shown, font=font, fill=(255, 255, 255, 255),
-                                   stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
-        rgba = np.array(image)
-        return np.dstack([rgba[:, :, 2::-1], rgba[:, :, 3]])
-    scale = size / 30
-    (tw, th), base = cv2.getTextSize(full, cv2.FONT_HERSHEY_DUPLEX, scale, 2 + stroke)
-    sprite = np.zeros((th + base + 2 * stroke, tw + 2 * stroke, 4), np.uint8)
-    for thickness, color in ((2 + 2 * stroke, (0, 0, 0, 255)), (2, (255, 255, 255, 255))):
-        cv2.putText(sprite, shown, (stroke, th + stroke), cv2.FONT_HERSHEY_DUPLEX, scale, color, thickness, cv2.LINE_AA)
-    return sprite
-
-
-def blend(base: np.ndarray, layer: np.ndarray, alpha: np.ndarray) -> np.ndarray:
-    """uint8 alpha blend (alpha: float32 0..1, same height and width)."""
-    return cv2.blendLinear(layer, base, alpha, 1.0 - alpha)
-
-
-def paste(image: np.ndarray, sprite: np.ndarray, x: int, y: int, opacity: float) -> None:
-    """Alpha-blends a BGRA sprite onto a uint8 image, in place, clipped to the image."""
-    h, w = image.shape[:2]
-    sh, sw = sprite.shape[:2]
-    x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + sw, w), min(y + sh, h)
-    if x0 >= x1 or y0 >= y1:
-        return
-    part = sprite[y0 - y:y1 - y, x0 - x:x1 - x]
-    a = part[:, :, 3].astype(np.float32) / 255 * opacity
-    image[y0:y1, x0:x1] = blend(image[y0:y1, x0:x1], np.ascontiguousarray(part[:, :, :3]), a)
-
-
 # --------------------------------------------------------------------------- overlay
 
 class ThisIsFine(Overlay):
@@ -262,6 +204,6 @@ class ThisIsFine(Overlay):
         letters = int((elapsed - CAPTION_START) / CAPTION_CHAR) + 1
         if letters > 0:
             size = max(int(h * 0.07), 12)
-            sprite = caption_sprite(CAPTION[:letters], CAPTION, size)
+            sprite = text_sprite(CAPTION[:letters], CAPTION, size, FONTS)
             paste(out, sprite, (w - sprite.shape[1]) // 2, int(h * 0.9) - sprite.shape[0], level)
         return out

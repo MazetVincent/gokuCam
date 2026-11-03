@@ -15,11 +15,12 @@ GokuCam sits between your real webcam and your video-call app. It watches your h
 
 Make any sign again to come back; the return plays that sign's arrival effect.
 
-And one effect that does not make you vanish, an **overlay** that lasts as long as its sign:
+And effects that do not make you vanish: **overlays**, which last as long as their sign:
 
 | Sign | Effect |
 |---|---|
 | **This is fine**: hold your mug | Cartoon flames appear one after the other at different places around you (always behind you), a ceiling of smoke rolls in at the top of the screen, and "This is fine." is typed letter by letter |
+| **Absolute cinema**: both open palms raised above your head | The picture turns black and white, red stage curtains close behind you, and "ABSOLUTE CINEMA" appears; lower your hands and it plays backwards |
 
 Everything runs locally. No image is recorded or sent anywhere except to the call itself. The only network access is the first-run download of four official MediaPipe models from Google.
 
@@ -74,7 +75,7 @@ Keep the preview window open during the call: closing it stops the virtual camer
 | Key (in the preview) | Action |
 |---|---|
 | `T` / `N` / `P` / `H` | Play Instant Transmission / Substitution / Peace out / Into the bush without the sign |
-| `F` | Switch "This is fine" on or off without the mug |
+| `F` / `C` | Switch "This is fine" / "Absolute cinema" on or off without the sign |
 | `B` | Retake the room photo |
 | `D` | Debug: for each sign, show which criteria are missing |
 | `S` | Save a diagnostic snapshot (camera, output, room photo, mask) to `captures/` |
@@ -136,6 +137,7 @@ gokucam/
   overlays/
     base.py         the Overlay contract: checks() + render(level)
     this_is_fine.py
+    absolute_cinema.py
     __init__.py     registry of overlays
 tests/              unit tests (no webcam or MediaPipe needed)
 tools/              inspect_sign.py: what the detectors see of a sign on a photo
@@ -166,7 +168,7 @@ Add it to `default_jutsus()` in `gokucam/jutsus/__init__.py`, and the app does t
 ## Tests
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -t .   # 60 tests, a few seconds, no webcam needed
+.venv/bin/python -m unittest discover -s tests -t .   # 68 tests, a few seconds, no webcam needed
 ./run.command --self-test                             # full pipeline with the real models
 ```
 
@@ -190,7 +192,7 @@ The tests cover the signs (including landmarks recorded from a real photo of the
 - [OpenCV](https://opencv.org/) and [NumPy](https://numpy.org/) for all the image processing, [Pillow](https://python-pillow.org/) for the caption text
 - [pyvirtualcam](https://github.com/letmaik/pyvirtualcam) and [OBS Studio](https://obsproject.com/) for the virtual camera
 
-The effects are inspired by *Dragon Ball Z*, *Naruto*, *The Simpsons*, the "bye" meme and K.C. Green's "This is fine" comic. This is a fan project, not affiliated with their authors or publishers; no image from those works is included: everything is drawn in code.
+The effects are inspired by *Dragon Ball Z*, *Naruto*, *The Simpsons*, the "bye" meme, K.C. Green's "This is fine" comic and the "Absolute cinema" meme. This is a fan project, not affiliated with their authors or publishers; no image from those works is included: everything is drawn in code.
 
 ## License
 
