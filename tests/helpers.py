@@ -11,15 +11,15 @@ FACE_BELOW = Face(forehead=np.float32([300, 260]), width=120.0, seen_at=0.0)    
 
 
 def make_hand(fingers_apart: bool = False, open_palm: bool = False, offset=(0.0, 0.0),
-              index_only: bool = False) -> np.ndarray:
+              index_only: bool = False, fist: bool = False) -> np.ndarray:
     """Upright hand, wrist at (300, 300), scale (wrist -> middle knuckle) = 50 px.
-    Default: index + middle extended and together, ring + pinky folded."""
+    Default: index + middle extended and together, ring + pinky folded. `fist`: all folded."""
     hand = np.zeros((21, 2), np.float32)
     hand[0] = (300, 300)
     hand[1:5] = [(280, 290), (270, 275), (265, 262), (262, 250)]  # thumb
     for finger, x in enumerate((290, 300, 310, 320)):
         mcp = 5 + 4 * finger
-        extended = finger < (1 if index_only else 2) or open_palm
+        extended = (finger < (1 if index_only else 2) or open_palm) and not fist
         if fingers_apart and finger == 1:
             x += 40
         hand[mcp] = (x, 250)

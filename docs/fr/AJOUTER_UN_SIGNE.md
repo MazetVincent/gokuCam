@@ -150,7 +150,7 @@ def default_jutsus() -> list[Jutsu]:
     return [InstantTransmission(), Substitution(), PeaceOut(), WaveGoodbye()]
 ```
 
-Choisissez une `key` libre : `b`, `d`, `s` et `q` appartiennent à l'application, `t`, `n`, `p`, `h` aux jutsus existants, `f` et `c` aux overlays.
+Choisissez une `key` libre : `b`, `d`, `s` et `q` appartiennent à l'application, `t`, `n`, `p`, `h` aux jutsus existants, `f`, `c` et `i` aux overlays.
 
 ## 6. Tester
 

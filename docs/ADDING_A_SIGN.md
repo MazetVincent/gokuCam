@@ -150,7 +150,7 @@ def default_jutsus() -> list[Jutsu]:
     return [InstantTransmission(), Substitution(), PeaceOut(), WaveGoodbye()]
 ```
 
-Pick a `key` that is not already used: `b`, `d`, `s` and `q` belong to the app, `t`, `n`, `p`, `h` to the existing jutsus, `f` and `c` to the overlays.
+Pick a `key` that is not already used: `b`, `d`, `s` and `q` belong to the app, `t`, `n`, `p`, `h` to the existing jutsus, `f`, `c` and `i` to the overlays.
 
 ## 6. Testing
 

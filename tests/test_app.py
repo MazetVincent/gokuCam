@@ -156,6 +156,15 @@ class OverlayLifecycleTest(unittest.TestCase):
         self.run_for(1.0)
         self.assertEqual(self.state().level, 0.0)
 
+    def test_a_jutsu_sign_wins_over_an_overlay_sign(self):
+        cam = GokuCam(self.detectors, (320, 180), jutsus=[RaisedHand()], overlays=[self.overlay])
+        self.cam = cam
+        self.run_for(appmod.PLATE_COUNTDOWN + 0.1)
+        self.detectors.hands = [np.zeros((21, 2), np.float32)]      # the jutsu's sign...
+        self.run_for(1.0, cup=True)                                   # ...and the overlay's at once
+        self.assertEqual(self.overlay.starts, 0)
+        self.assertEqual(self.state().level, 0.0)
+
     def test_not_during_the_room_photo(self):
         out = self.run_for(2.0, cup=True)
         self.assertEqual(self.cam.state, "plate")

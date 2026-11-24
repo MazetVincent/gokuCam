@@ -58,7 +58,7 @@ Les briques de base sont dans `hands.py` :
 - `index_up(hand)` : index tendu et pointe au moins une échelle de main au-dessus du poignet.
 - Les distances au visage sont des multiples de la largeur du visage.
 
-Par exemple, la Transmission instantanée, c'est : index et majeur tendus, annulaire et auriculaire pliés, pointes à moins de 0,5 échelle de main l'une de l'autre, et à moins de 0,55 largeur de visage du front. Peace out reprend la même main, mais avec les pointes écartées de **plus** de 0,55 échelle de main, et à plus de 0,8 largeur de visage du front. Les deux signes ne peuvent pas être confondus.
+Par exemple, la Transmission instantanée, c'est : index et majeur tendus, annulaire et auriculaire pliés, pointes à moins de 0,5 échelle de main l'une de l'autre, à moins de 0,55 largeur de visage du front, et aucune autre main collée contre elle (une des mains jointes de la Substitution ressemble exactement à ce signe). Peace out reprend la même main, mais avec les pointes écartées de **plus** de 0,55 échelle de main, et à plus de 0,8 largeur de visage du front. Les deux signes ne peuvent pas être confondus.
 
 ### 3.2 Tenir un signe
 
@@ -67,6 +67,8 @@ Par exemple, la Transmission instantanée, c'est : index et majeur tendus, annul
 - le signe doit être tenu **0,35 s** (la barre de progression de l'aperçu) ;
 - les trous de détection jusqu'à 0,15 s ne remettent pas le compteur à zéro (les repères scintillent) ;
 - après un déclenchement, le signe doit être **relâché 0,5 s** avant de pouvoir se redéclencher. Le tenir pendant tout l'effet ne vous fait donc pas revenir aussitôt.
+
+Un signe de jutsu passe avant un signe d'overlay : tant que les mains font le signe d'un jutsu, aucun overlay ne peut démarrer.
 
 ### 3.3 Un signe à deux mains : la Substitution
 
@@ -198,6 +200,17 @@ Le mème « Absolute cinema » : une image en noir et blanc encadrée de rideaux
 - **Titre** (0,8 → 1) : « ABSOLUTE CINEMA » en capitales grasses à empattements, espacées, une fois les rideaux fermés.
 - **Juste derrière la personne** : rideaux et lambrequin sont multipliés par `1 − masque resserré`, le masque de la personne ramené au contour réel (`fx.tight_mask`), pour qu'aucune bande de la pièce n'apparaisse autour de vous.
 
+### 6.7 Infinity (`overlays/infinity.py`)
+
+Le signe infini de *One Punch Man*. Le signe : deux poings (index plié, plus au moins deux des trois autres doigts, l'un est souvent caché par l'autre poing ; l'index est obligatoire car les mains jointes de la Substitution plient les trois autres) dont les centres des paumes sont à moins de 2,2 échelles de main. Le suivi vidéo peut fusionner deux poings collés en une seule main : quand il ne voit qu'un poing, on demande les deux à la détection sur image fixe, comme pour la Substitution.
+
+- **Suit les poings** : `checks()` retient où les poings se rejoignent et leur taille ; le signe est centré là, sa demi-largeur vaut 2,6 échelles de main (bornée entre 10 et 24 % de la largeur de l'image), lissée d'une image à l'autre. Allumé avec `I` sans le signe, il se place devant la poitrine.
+- **Pièce gris sombre** (niveau 0 → 0,45) : tout ce qui est derrière la personne (`1 − masque resserré`) passe en gris assombri à 32 % ; vous restez en couleur.
+- **Les boucles** (0,15 → 0,75) : une lemniscate de Bernoulli, plus ronde que celle des manuels, tracée depuis le croisement vers l'extérieur sur les deux boucles à la fois, avec une tête lumineuse. Une fois fermées, l'intérieur des boucles est assombri, comme dans la scène. Des scintillements tournent le long des boucles.
+- **Halo** (0,3 → 1) : la ligne blanc incandescent est dessinée en demi-résolution, puis floutée deux fois au quart de la résolution (un halo serré et un large) avec des gains orange-rouge, un léger scintillement, et ajoutée à l'image.
+- **Étincelles** : un système de particules sans état. L'étincelle *i* naît à *i* / 260 s, en un point aléatoire de la courbe, et part vers l'extérieur (avec une déviation aléatoire et un freinage) pendant 0,45 à 1,3 s ; ses paramètres aléatoires viennent d'une réserve tirée une fois dans `start()`. Chaque image calcule donc les étincelles vivantes à cet instant à partir du seul temps, sans état à mettre à jour. Elles passent du blanc incandescent au jaune, à l'orange puis au rouge sombre en vieillissant ; quelques-unes sont bleutées. Elles sont dessinées en courts traits (leur position actuelle et celle d'il y a 50 ms).
+- Le fond, les boucles et le halo ne dépendent que du niveau : écarter les poings fait tout disparaître à l'envers (0,4 s de tolérance, fondu de 0,8 s).
+
 ## 7. Webcam et caméra virtuelle
 
 **Choisir la vraie webcam** (`camera.py`) : une fois OBS installé, macOS compte deux caméras, et OpenCV donnait l'index 0 à *OBS Virtual Camera*. GokuCam lisait sa propre sortie. Deux garde-fous :
@@ -213,7 +226,7 @@ Mesuré sur un Apple M1 en 1280×720 :
 | Étape | Temps par image |
 |---|---|
 | Détection + machine à états (suivre des mains coûte à peu près autant que les chercher) | ~30 ms |
-| Détection des mains sur image fixe (seulement quand un index levé est vu, une image sur trois) | ~35 ms, soit ~12 ms par image |
+| Détection des mains sur image fixe (seulement quand un index levé ou un seul poing est vu, une image sur trois) | ~35 ms, soit ~12 ms par image |
 | Détection d'objets (en arrière-plan, seulement quand une main est visible) | ~18 ms, hors de la boucle principale |
 | Effet Transmission instantanée | ~20 ms |
 | Effet Substitution | ~28 ms |
@@ -221,6 +234,7 @@ Mesuré sur un Apple M1 en 1280×720 :
 | Effet Dans le buisson | ~7 ms |
 | Overlay This is fine | ~7 ms |
 | Overlay Absolute cinema | ~14 ms |
+| Overlay Infinity | ~9 ms |
 | Génération du tronc (une fois par Substitution) | ~90 ms |
 
 L'essentiel du temps est passé dans MediaPipe lui-même ; en particulier, le détecteur de mains cherche des paumes à chaque image tant qu'aucune main n'est suivie. Les astuces côté GokuCam : détection en 640×360, fumée au 1/4 de la résolution, flous en résolution réduite, mélanges en entiers, détecteurs lents espacés ou passés en arrière-plan, et travail propre à chaque effet (tronc, graine, bruit) fait une seule fois dans `start()` plutôt qu'à chaque image.

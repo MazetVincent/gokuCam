@@ -21,6 +21,7 @@ Et des effets qui ne font pas disparaître : des **overlays**, qui durent tant q
 |---|---|
 | **This is fine** : prenez votre tasse en main | Des flammes cartoon apparaissent l'une après l'autre à différents endroits autour de vous (toujours derrière vous), un plafond de fumée envahit le haut de l'écran, et « This is fine. » s'écrit lettre par lettre |
 | **Absolute cinema** : les deux paumes ouvertes levées au-dessus de la tête | L'image passe en noir et blanc, des rideaux de théâtre rouges se ferment derrière vous et « ABSOLUTE CINEMA » apparaît ; baissez les mains et tout se rejoue à l'envers |
+| **Infinity** : les deux poings collés | Un signe infini incandescent apparaît entre vos poings (et les suit), tout sauf vous passe en gris sombre, et des étincelles jaillissent du signe partout sur l'écran |
 
 Tout tourne en local. Aucune image n'est enregistrée ni envoyée ailleurs qu'à l'appel lui-même. Le seul accès réseau est le téléchargement, au premier lancement, de quatre modèles MediaPipe officiels de Google.
 
@@ -75,7 +76,7 @@ Gardez la fenêtre d'aperçu ouverte pendant l'appel : la fermer coupe la camér
 | Touche (dans l'aperçu) | Action |
 |---|---|
 | `T` / `N` / `P` / `H` | Jouer Transmission instantanée / Substitution / Peace out / Dans le buisson sans faire le signe |
-| `F` / `C` | Allumer ou éteindre « This is fine » / « Absolute cinema » sans faire le signe |
+| `F` / `C` / `I` | Allumer ou éteindre « This is fine » / « Absolute cinema » / « Infinity » sans faire le signe |
 | `B` | Refaire la photo de la pièce |
 | `D` | Debug : pour chaque signe, affiche les critères qui manquent |
 | `S` | Enregistrer une capture de diagnostic (caméra, sortie, photo de la pièce, masque) dans `captures/` |
@@ -138,6 +139,7 @@ gokucam/
     base.py         le contrat d'un overlay : checks() + render(level)
     this_is_fine.py
     absolute_cinema.py
+    infinity.py
     __init__.py     registre des overlays
 tests/              tests unitaires (sans webcam ni MediaPipe)
 tools/              inspect_sign.py : ce que les détecteurs voient d'un signe sur une photo
@@ -168,7 +170,7 @@ Ajoutez-le à `default_jutsus()` dans `gokucam/jutsus/__init__.py`, et l'applica
 ## Tests
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -t .   # 68 tests, quelques secondes, sans webcam
+.venv/bin/python -m unittest discover -s tests -t .   # 82 tests, quelques secondes, sans webcam
 ./run.command --self-test                             # tout le pipeline avec les vrais modèles
 ```
 
@@ -192,7 +194,7 @@ Les tests couvrent les signes (y compris des repères enregistrés sur une vraie
 - [OpenCV](https://opencv.org/) et [NumPy](https://numpy.org/) pour tout le traitement d'image, [Pillow](https://python-pillow.org/) pour le texte du sous-titre
 - [pyvirtualcam](https://github.com/letmaik/pyvirtualcam) et [OBS Studio](https://obsproject.com/) pour la caméra virtuelle
 
-Les effets s'inspirent de *Dragon Ball Z*, de *Naruto*, des *Simpson*, du mème « bye », de la BD « This is fine » de K.C. Green et du mème « Absolute cinema ». C'est un projet de fan, sans lien avec leurs auteurs ou éditeurs ; aucune image de ces œuvres n'est incluse : tout est dessiné en code.
+Les effets s'inspirent de *Dragon Ball Z*, de *Naruto*, des *Simpson*, du mème « bye », de la BD « This is fine » de K.C. Green et du mème « Absolute cinema » et de *One Punch Man*. C'est un projet de fan, sans lien avec leurs auteurs ou éditeurs ; aucune image de ces œuvres n'est incluse : tout est dessiné en code.
 
 ## Licence
 

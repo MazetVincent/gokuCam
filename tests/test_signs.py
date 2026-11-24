@@ -30,6 +30,21 @@ class InstantTransmissionSignTest(unittest.TestCase):
     def test_needs_a_face(self):
         self.assertEqual(self.jutsu.checks(signs([make_hand()], None)), {"face in view": False})
 
+    def test_hand_pressed_against_another_is_not_the_sign(self):
+        """One of the Substitution's clasped hands has index and middle up together: with
+        the other hand right against it, it is not Goku, even near the forehead."""
+        hands = [make_hand(), make_hand(index_only=True, offset=(25, 5))]
+        self.assertFalse(self.jutsu.detected(signs(hands, FACE_ON_HAND)))
+        far = [make_hand(), make_hand(index_only=True, offset=(250, 0))]
+        self.assertTrue(self.jutsu.detected(signs(far, FACE_ON_HAND)))
+
+    def test_real_substitution_sign_near_the_forehead_is_not_goku(self):
+        data = json.loads((Path(__file__).parent / "data" / "joined_hands.json").read_text())
+        still = [np.float32(h) for h in data["still_hands"]]
+        tips = (still[0][8] + still[0][12]) / 2
+        face = Face(tips + np.float32([0, 10]), data["face"]["width"], 0.0)   # hands raised to the forehead
+        self.assertFalse(self.jutsu.detected(signs(still, face)))
+
 
 class SubstitutionSignTest(unittest.TestCase):
     jutsu = Substitution()

@@ -12,7 +12,8 @@ import cv2
 import numpy as np
 
 from ..fx import remove_person, smoothstep
-from ..hands import INDEX_TIP, MIDDLE_TIP, best_hand, dist, finger_extended, finger_folded, hand_scale
+from ..hands import (INDEX_MCP, INDEX_TIP, MIDDLE_MCP, MIDDLE_TIP, PINKY_MCP, RING_MCP, WRIST, best_hand, dist,
+                     finger_extended, finger_folded, hand_scale)
 from .base import Jutsu, Scene, SignInput
 
 STRAND_WIDTH = 4                                   # px; strands are 1 to 3 times this wide
@@ -157,10 +158,23 @@ def render_teleport(frame: np.ndarray, absent: np.ndarray, mask: np.ndarray, t: 
     return out
 
 
+def palm_center(hand: np.ndarray) -> np.ndarray:
+    return hand[[WRIST, INDEX_MCP, MIDDLE_MCP, RING_MCP, PINKY_MCP]].mean(axis=0)
+
+
+def hand_alone(hand: np.ndarray, hands: list[np.ndarray]) -> bool:
+    """No other hand pressed against it. One of the Substitution's clasped hands looks
+    exactly like this sign (index and middle up together, the others folded)."""
+    reach = 1.5 * hand_scale(hand)
+    return all(other is hand or float(np.linalg.norm(palm_center(other) - palm_center(hand))) > reach
+               for other in hands)
+
+
 def goku_hand_checks(hand: np.ndarray, signs: SignInput) -> dict[str, bool]:
     face = signs.face
     tips = (hand[INDEX_TIP] + hand[MIDDLE_TIP]) / 2
     return {
+        "one hand only": hand_alone(hand, signs.hands),
         "index extended": finger_extended(hand, "index"),
         "middle extended": finger_extended(hand, "middle"),
         "ring folded": finger_folded(hand, "ring"),

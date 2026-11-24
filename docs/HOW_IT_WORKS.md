@@ -58,7 +58,7 @@ The building blocks are in `hands.py`:
 - `index_up(hand)`: index extended and its tip at least one hand-scale above the wrist.
 - Distances to the face are multiples of the face width.
 
-For example, Instant Transmission is index and middle extended, ring and pinky folded, fingertips closer than 0.5 hand-scale, and fingertips within 0.55 face-widths of the forehead. Peace out is the same hand but with the fingertips **more** than 0.55 hand-scale apart, and more than 0.8 face-widths from the forehead. The two signs cannot be confused.
+For example, Instant Transmission is index and middle extended, ring and pinky folded, fingertips closer than 0.5 hand-scale, fingertips within 0.55 face-widths of the forehead, and no other hand pressed against it (one of the Substitution's clasped hands looks exactly like this sign). Peace out is the same hand but with the fingertips **more** than 0.55 hand-scale apart, and more than 0.8 face-widths from the forehead. The two signs cannot be confused.
 
 ### 3.2 Holding a sign
 
@@ -67,6 +67,8 @@ For example, Instant Transmission is index and middle extended, ring and pinky f
 - the sign must be held for **0.35 s** (the progress bar in the preview);
 - detection gaps up to 0.15 s do not reset the hold (landmarks flicker);
 - after firing, the sign must be **released for 0.5 s** before it can fire again, so holding it through the whole effect does not bring you straight back.
+
+A jutsu sign takes priority over an overlay sign: while the hands make a jutsu's sign, no overlay can start.
 
 ### 3.3 A two-hand sign: Substitution
 
@@ -198,6 +200,17 @@ The "Absolute cinema" meme: a black and white still framed by red stage curtains
 - **Title** (0.8 → 1): "ABSOLUTE CINEMA" in bold serif capitals, letter-spaced, once the curtains are closed.
 - **Right behind the person**: curtains and valance are multiplied by `1 − tight mask`, the person mask brought back to the real outline (`fx.tight_mask`), so that no strip of the room shows around you.
 
+### 6.7 Infinity (`overlays/infinity.py`)
+
+The infinity sign from *One Punch Man*. The sign is two fists (index folded, plus at least two of the three other fingers, one is often hidden by the other fist; the index is required because the Substitution's clasped hands fold the other three) with their palm centres less than 2.2 hand scales apart. Video tracking may merge two fists pressed together into one hand: when it sees a single fist, the still-image detection is asked for both, as for the Substitution.
+
+- **Follows the fists**: `checks()` remembers where the fists meet and how big they are; the sign is centred there, its half-width is 2.6 hand scales (clamped to 10–24% of the frame width), smoothed from frame to frame. Switched on with `I` without the sign, it sits in front of the chest.
+- **Dark grey room** (level 0 → 0.45): everything behind the person (`1 − tight mask`) is converted to grey and darkened to 32%; you stay in colour.
+- **The loops** (0.15 → 0.75): a lemniscate of Bernoulli, rounder than the textbook one, traced from the crossing outwards along both loops at once, with a bright head. Once closed, the inside of the loops is darkened, as in the scene. Sparkles run round the loops.
+- **Glow** (0.3 → 1): the white-hot line is drawn at half resolution, then blurred twice at a quarter resolution (a tight and a wide halo) with orange-red gains, flickering slightly, and added to the image.
+- **Sparks**: a stateless particle system. Spark *i* is born at *i* / 260 s, at a random point of the curve, and flies outwards (with a random deviation and some drag) for 0.45–1.3 s; its random parameters come from a pool drawn once in `start()`. So each frame computes the sparks alive at that moment from the time alone, with no state to update. They go from white-hot to yellow, orange and deep red as they age; a few are bluish. They are drawn as short streaks (their position now and 50 ms earlier).
+- The background, loops and glow depend only on the level, so taking the fists apart fades it all out backwards (0.4 s of grace, 0.8 s fade).
+
 ## 7. Webcam and virtual camera
 
 **Picking the real webcam** (`camera.py`): once OBS is installed, macOS has two cameras, and OpenCV gave index 0 to *OBS Virtual Camera*. GokuCam was reading its own output. Two safeguards:
@@ -213,7 +226,7 @@ Measured on an Apple M1 at 1280×720:
 | Step | Time per frame |
 |---|---|
 | Detection + state machine (hand tracking costs about as much as searching for hands) | ~30 ms |
-| Still-image hand detection (only while a raised index is seen, every third frame) | ~35 ms, so ~12 ms per frame |
+| Still-image hand detection (only while a raised index or a single fist is seen, every third frame) | ~35 ms, so ~12 ms per frame |
 | Object detection (background thread, only while a hand is in view) | ~18 ms, off the main loop |
 | Instant Transmission effect | ~20 ms |
 | Substitution effect | ~28 ms |
@@ -221,6 +234,7 @@ Measured on an Apple M1 at 1280×720:
 | Into the bush effect | ~7 ms |
 | This is fine overlay | ~7 ms |
 | Absolute cinema overlay | ~14 ms |
+| Infinity overlay | ~9 ms |
 | Log generation (once per Substitution) | ~90 ms |
 
 Most of the time goes into MediaPipe itself; in particular, the hand landmarker looks for palms on every frame while no hand is tracked. The tricks on GokuCam's side: detection at 640×360, smoke at 1/4 resolution, blurs at reduced resolution, integer blending, slow detectors throttled or moved to a background thread, and per-effect work (log, seed, noise) done once in `start()` rather than every frame.

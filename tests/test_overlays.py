@@ -1,10 +1,13 @@
+import json
 import unittest
+from pathlib import Path
 
 import numpy as np
 
 from gokucam.jutsus import Scene, default_jutsus
 from gokucam.models import DetectedObject
-from gokucam.overlays import AbsoluteCinema, ThisIsFine
+from gokucam.overlays import AbsoluteCinema, Infinity, ThisIsFine
+from gokucam.overlays.infinity import is_fist
 from gokucam.overlays.this_is_fine import CAPTION_CHAR, CAPTION_START, mug_checks
 
 from .helpers import FACE_ABOVE, FACE_BELOW, make_hand, signs
@@ -151,3 +154,94 @@ class AbsoluteCinemaRenderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InfinitySignTest(unittest.TestCase):
+    @staticmethod
+    def fists(apart=60):
+        return [make_hand(fist=True), make_hand(fist=True, offset=(apart, 0))]
+
+    def test_two_fists_pressed_together(self):
+        self.assertTrue(all(Infinity().checks(signs(self.fists(), FACE_ABOVE)).values()))
+
+    def test_fists_apart_open_hands_or_one_fist_are_not_the_sign(self):
+        for hands in (self.fists(apart=250),                                   # too far apart
+                      [make_hand(open_palm=True), make_hand(open_palm=True, offset=(60, 0))],
+                      [make_hand(fist=True)]):
+            self.assertFalse(all(Infinity().checks(signs(hands, FACE_ABOVE)).values()))
+
+    def test_merged_fists_are_found_on_the_still_image(self):
+        merged = signs([make_hand(fist=True)], FACE_ABOVE, still=self.fists())
+        self.assertTrue(all(Infinity().checks(merged).values()))
+
+    def test_real_substitution_sign_is_not_fists(self):
+        """The clasped hands of the Substitution fold three fingers each, but not the index."""
+        data = json.loads((Path(__file__).parent / "data" / "joined_hands.json").read_text())
+        video = [np.float32(h) for h in data["video_hands"]]
+        still = [np.float32(h) for h in data["still_hands"]]
+        self.assertFalse(any(is_fist(hand) for hand in video + still))
+        clasped = [make_hand(index_only=True), make_hand(index_only=True, offset=(10, 3))]
+        self.assertFalse(all(Infinity().checks(signs(clasped, FACE_BELOW)).values()))
+
+    def test_does_not_trigger_anything_else(self):
+        fists = signs(self.fists(), FACE_ABOVE)
+        self.assertFalse(any(jutsu.detected(fists) for jutsu in default_jutsus()))
+        for overlay in (ThisIsFine(), AbsoluteCinema()):
+            self.assertFalse(all(overlay.checks(fists).values()))
+
+    def test_the_sign_follows_the_fists(self):
+        overlay = Infinity()
+        overlay.checks(signs(self.fists(), FACE_ABOVE))
+        x, y, _ = overlay.target
+        self.assertAlmostEqual(x * 640, 330, delta=15)   # between the two fists (DETECT_SIZE 640 x 360)
+        self.assertAlmostEqual(y * 360, 270, delta=20)
+
+
+class InfinityRenderTest(unittest.TestCase):
+    def setUp(self):
+        h, w = 360, 640
+        self.frame = np.zeros((h, w, 3), np.uint8)
+        self.frame[:] = (60, 140, 200)                     # a colourful room
+        self.mask = np.zeros((h, w), np.float32)
+        self.mask[60:, 250:390] = 1.0                      # the person
+        self.scene = Scene(frame=self.frame, plate=self.frame, hidden=self.frame, mask=self.mask,
+                           seed=3, rng=np.random.default_rng(0))
+        self.overlay = Infinity()
+        self.overlay.start(self.scene)
+
+    def render(self, level, t=2.0):
+        return self.overlay.render(self.frame.copy(), self.scene, t, level)
+
+    def test_nothing_at_level_zero(self):
+        self.assertTrue(np.array_equal(self.render(0.0), self.frame))
+
+    def test_background_turns_dark_grey_but_not_the_person(self):
+        out = self.render(1.0).astype(int)
+        corner = out[5:40, 5:60].reshape(-1, 3)
+        quiet = corner[np.ptp(corner, axis=1) < 12]          # background pixels without a spark on them
+        self.assertGreater(len(quiet), 100)
+        self.assertLess(quiet.mean(), 80)                   # dark and grey
+        body = out[80:110, 300:340].reshape(-1, 3)          # the person's shoulders, above the sign
+        self.assertGreater(int(np.median(body[:, 2]) - np.median(body[:, 0])), 100)   # still in colour
+
+    def test_the_sign_burns_white_hot_in_front_of_the_person(self):
+        out = self.render(1.0)
+        x, y, size = self.overlay.position
+        hot = out.min(axis=2) > 220
+        near = hot[int(y - size * 0.6):int(y + size * 0.6), int(x - size * 1.1):int(x + size * 1.1)]
+        self.assertGreater(int(near.sum()), 200)
+
+    def test_sparks_fly_all_over_the_screen(self):
+        out = self.render(1.0, t=3.0).astype(int)
+        x, y, size = self.overlay.position
+        bright = out.max(axis=2) > 150
+        bright[int(y - size * 1.2):int(y + size * 1.2), int(x - size * 1.5):int(x + size * 1.5)] = False
+        bright[60:, 250:390] = False                        # ignore the person, already bright
+        h, w = bright.shape
+        quadrants = [bright[:h // 2, :w // 2], bright[:h // 2, w // 2:], bright[h // 2:, :w // 2], bright[h // 2:, w // 2:]]
+        self.assertTrue(all(int(q.sum()) > 5 for q in quadrants))
+
+    def test_loops_trace_themselves_out_as_it_fades_in(self):
+        hot = [int((self.render(level).min(axis=2) > 200).sum()) for level in (0.3, 0.55, 1.0)]
+        self.assertLess(hot[0], hot[1])
+        self.assertLess(hot[1], hot[2])

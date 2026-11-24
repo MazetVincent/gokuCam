@@ -2,11 +2,12 @@
 
 from .absolute_cinema import AbsoluteCinema
 from .base import Overlay
+from .infinity import Infinity
 from .this_is_fine import ThisIsFine
 
 
 def default_overlays() -> list[Overlay]:
-    return [ThisIsFine(), AbsoluteCinema()]
+    return [ThisIsFine(), AbsoluteCinema(), Infinity()]
 
 
-__all__ = ["AbsoluteCinema", "Overlay", "ThisIsFine", "default_overlays"]
+__all__ = ["AbsoluteCinema", "Infinity", "Overlay", "ThisIsFine", "default_overlays"]

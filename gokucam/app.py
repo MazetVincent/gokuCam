@@ -193,9 +193,12 @@ class GokuCam:
         """Processes one webcam frame and returns the frame to send to the call."""
         self.last_frame = frame
         signs = self.detect(frame, now)
+        jutsu_sign = False
         for name, jutsu in self.jutsus.items():
             self.checks[name] = jutsu.checks(signs)
-            if self.trackers[name].update(all(self.checks[name].values()), now):
+            made = all(self.checks[name].values())
+            jutsu_sign |= made
+            if self.trackers[name].update(made, now):
                 self.trigger(now, name)
 
         if self.state == "plate":
@@ -204,7 +207,8 @@ class GokuCam:
 
         for name, overlay in self.overlays.items():
             self.checks[name] = overlay.checks(signs)
-            self.update_overlay(name, all(self.checks[name].values()), now)
+            # a jutsu sign wins: an overlay never starts on the hands of a jutsu
+            self.update_overlay(name, all(self.checks[name].values()) and not jutsu_sign, now)
         return self.apply_overlays(self.jutsu_output(frame, now), frame, now)
 
     def jutsu_output(self, frame: np.ndarray, now: float) -> np.ndarray:
